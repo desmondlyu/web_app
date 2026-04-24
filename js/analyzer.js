@@ -110,25 +110,54 @@ function crossAnalyze(cpData, mssData, rawData, thresholds, product) {
         saved_time_sec
       };
 
-      if (cls.status === 'repair_item')                                      repair_items.push(out);
+      if (cls.status === 'repair_item')                                           repair_items.push(out);
       else if (cls.status === 'never_occurred' || cls.status === 'very_low_risk') removable.push(out);
-      else                                                                    not_removable.push(out);
+      else                                                                         not_removable.push(out);
     }
+
+    // ── 去重：同站點內相同 (test_no, test_item) 只顯示一次，時間加總，CAT IDs 聯集 ──
+    function _dedup(arr) {
+      const map = new Map();
+      for (const item of arr) {
+        const key = `${item.test_no}||${item.test_item}`;
+        if (map.has(key)) {
+          const existing = map.get(key);
+          // 時間加總
+          existing.saved_time_sec += item.saved_time_sec;
+          // CAT IDs 聯集去重
+          const catSet = new Set([...existing.cat_ids, ...item.cat_ids]);
+          existing.cat_ids = [...catSet];
+          // PPM 取最大值（保守）
+          if (item.worst_cat_avg_ppm > existing.worst_cat_avg_ppm)
+            existing.worst_cat_avg_ppm = item.worst_cat_avg_ppm;
+          if (item.worst_cat_max_ppm > existing.worst_cat_max_ppm)
+            existing.worst_cat_max_ppm = item.worst_cat_max_ppm;
+        } else {
+          // 淺複製避免多站點共用參考
+          map.set(key, Object.assign({}, item, { cat_ids: [...item.cat_ids] }));
+        }
+      }
+      return [...map.values()];
+    }
+
+    const dedupRemovable    = _dedup(removable);
+    const dedupRepair       = _dedup(repair_items);
+    const dedupNotRemovable = _dedup(not_removable);
 
     result.stations[displayName] = {
       summary: {
         total_items:          mssItems.length,
-        never_occurred_count: removable.filter(i => i.status === 'never_occurred').length,
-        very_low_risk_count:  removable.filter(i => i.status === 'very_low_risk').length,
-        low_risk_count:       not_removable.filter(i => i.status === 'low_risk').length,
-        repair_item_count:    repair_items.length,
-        has_loss_count:       not_removable.filter(i => i.status === 'has_loss').length,
-        removable_count:      removable.length,
-        total_removable_time_sec: removable.reduce((s, i) => s + i.saved_time_sec, 0)
+        never_occurred_count: dedupRemovable.filter(i => i.status === 'never_occurred').length,
+        very_low_risk_count:  dedupRemovable.filter(i => i.status === 'very_low_risk').length,
+        low_risk_count:       dedupNotRemovable.filter(i => i.status === 'low_risk').length,
+        repair_item_count:    dedupRepair.length,
+        has_loss_count:       dedupNotRemovable.filter(i => i.status === 'has_loss').length,
+        removable_count:      dedupRemovable.length,
+        total_removable_time_sec: dedupRemovable.reduce((s, i) => s + i.saved_time_sec, 0)
       },
-      removable,
-      repair_items,
-      not_removable
+      removable:     dedupRemovable,
+      repair_items:  dedupRepair,
+      not_removable: dedupNotRemovable
     };
   }
 

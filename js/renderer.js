@@ -43,6 +43,7 @@ function renderDashboard(result) {
     '分析時間：' + new Date(result.generated_at).toLocaleString('zh-TW');
 
   renderGlobalKPI(result);
+  renderTop10(result);       // ← 新增 Top 10 跨站點區塊
   renderStationTabs(result);
 }
 
@@ -77,6 +78,92 @@ function renderGlobalKPI(result) {
       <div class="kpi-card__label">${c.label}</div>
     </div>
   `).join('');
+}
+
+// ──────────────────────────────────────────────────────────────
+// Top 10 最耗時 Test Items（跨站點）
+// ──────────────────────────────────────────────────────────────
+
+function renderTop10(result) {
+  const container = document.getElementById('top10-section');
+  if (!container) return;
+
+  // 跨所有站點、所有分類 收集 items，以 test_item 名稱去重（取最大 saved_time_sec，並彙整出現站點）
+  const itemMap = new Map(); // key: test_item → { name, maxTime, stations: Set }
+
+  for (const [stName, stData] of Object.entries(result.stations)) {
+    const allItems = [
+      ...(stData.removable     || []),
+      ...(stData.repair_items  || []),
+      ...(stData.not_removable || [])
+    ];
+    for (const item of allItems) {
+      const name = item.test_item;
+      const t    = item.saved_time_sec || 0;
+      if (!itemMap.has(name)) {
+        itemMap.set(name, { name, maxTime: t, totalTime: t, stations: new Set([stName]) });
+      } else {
+        const rec = itemMap.get(name);
+        rec.totalTime += t;
+        if (t > rec.maxTime) rec.maxTime = t;
+        rec.stations.add(stName);
+      }
+    }
+  }
+
+  // 排序：依 totalTime 降冪，取 TOP 10
+  const top10 = [...itemMap.values()]
+    .filter(r => r.totalTime > 0)
+    .sort((a, b) => b.totalTime - a.totalTime)
+    .slice(0, 10);
+
+  if (!top10.length) {
+    container.innerHTML = '<div class="empty-state">— 無 Rawdata 時間資料，無法計算 Top 10 —</div>';
+    return;
+  }
+
+  const maxTime = top10[0].totalTime;
+
+  const rankClass = i => [
+    'top10-rank-1', 'top10-rank-2', 'top10-rank-3'
+  ][i] || 'top10-rank-other';
+
+  const rows = top10.map((r, i) => {
+    const pct     = maxTime > 0 ? (r.totalTime / maxTime * 100).toFixed(1) : 0;
+    const barW    = maxTime > 0 ? (r.totalTime / maxTime * 100).toFixed(1) : 0;
+    const stChips = [...r.stations].map(s =>
+      `<span class="top10-chip">${_esc(s)}</span>`
+    ).join('');
+    const timeStr = r.totalTime >= 60
+      ? (r.totalTime / 60).toFixed(2) + ' min'
+      : r.totalTime.toFixed(3) + ' s';
+
+    return `
+      <tr>
+        <td><span class="top10-rank ${rankClass(i)}">${i + 1}</span></td>
+        <td class="top10-item-name" title="${_esc(r.name)}">${_esc(r.name)}</td>
+        <td style="text-align:center">${stChips}</td>
+        <td>
+          <div class="top10-bar-row">
+            <div class="top10-bar-track"><div class="top10-bar-fill" style="width:${barW}%"></div></div>
+            <span class="top10-bar-val">${timeStr}</span>
+          </div>
+        </td>
+        <td style="text-align:right;font-size:0.78rem;font-weight:700;color:#f97316">${pct}%</td>
+      </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <table class="data-table top10-table">
+      <thead><tr>
+        <th style="width:44px">#</th>
+        <th>Test Item 名稱</th>
+        <th style="text-align:center">出現站點</th>
+        <th>估計節省時間（加總）</th>
+        <th style="text-align:right;width:64px">佔比</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 
 // ──────────────────────────────────────────────────────────────

@@ -445,3 +445,104 @@ body {
   .data-table .col-time { display: none; }
   .mini-kpi__value      { font-size: 1.2rem; }
 }
+
+/* ── Top 10 最耗時 Test Items ─────────────────────────────────── */
+.top10-section-wrapper {
+  margin-bottom: 20px;
+}
+.top10-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(135deg, #c2410c 0%, #f97316 100%);
+}
+.top10-section-header h4 {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: white;
+  margin: 0;
+}
+.top10-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  background: var(--bg-card);
+}
+
+/* 排名徽章 */
+.top10-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 800;
+}
+.top10-rank-1 { background: linear-gradient(135deg, #f59e0b, #fbbf24); color: #1a1000; }
+.top10-rank-2 { background: linear-gradient(135deg, #9ca3af, #d1d5db); color: #1a1a1a; }
+.top10-rank-3 { background: linear-gradient(135deg, #b45309, #d97706); color: #1a0a00; }
+.top10-rank-other { background: var(--table-th-bg); color: var(--text-secondary); border: 1px solid var(--border); }
+
+/* 站點 chips */
+.top10-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(249, 115, 22, 0.15);
+  color: #f97316;
+  margin: 1px 2px;
+  white-space: nowrap;
+}
+:root[data-theme="light"] .top10-chip {
+  background: rgba(249, 115, 22, 0.12);
+  color: #c2410c;
+}
+
+/* 進度條（橙色，類參考 html） */
+.top10-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.top10-bar-track {
+  flex: 1;
+  height: 6px;
+  background: var(--progress-track);
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 60px;
+}
+.top10-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #ea580c, #f97316);
+  transition: width 0.6s ease;
+}
+.top10-bar-val {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: monospace;
+  white-space: nowrap;
+  min-width: 70px;
+  text-align: right;
+}
+
+/* Item 名稱欄：截斷長文字 */
+.top10-item-name {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
