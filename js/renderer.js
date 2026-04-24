@@ -43,7 +43,6 @@ function renderDashboard(result) {
     '分析時間：' + new Date(result.generated_at).toLocaleString('zh-TW');
 
   renderGlobalKPI(result);
-  renderTop10(result);       // ← 新增 Top 10 跨站點區塊
   renderStationTabs(result);
 }
 
@@ -85,7 +84,7 @@ function renderGlobalKPI(result) {
 // ──────────────────────────────────────────────────────────────
 
 function renderTop10(result) {
-  const container = document.getElementById('top10-section');
+  const container = document.getElementById('top10-station-section');
   if (!container) return;
 
   // 跨所有站點、所有分類 收集 items，以 test_item 名稱去重（取最大 saved_time_sec，並彙整出現站點）
@@ -216,6 +215,9 @@ function switchStation(stationName, result) {
   _buildTable(`tbl-rm-${chartKey}`,  stData.removable,     _colsRemovable());
   _buildTable(`tbl-rp-${chartKey}`,  stData.repair_items,  _colsRepair());
   _buildTable(`tbl-nr-${chartKey}`,  stData.not_removable, _colsNotRemovable());
+
+  // Top 10 最耗時（跨站點）——放在可移除項目上方
+  renderTop10(result);
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -282,6 +284,9 @@ function _buildStationHTML(name, stData) {
         </table>
       </div>
     </div>
+
+    <!-- 可移除項甲0表 -->
+    <div id="top10-station-section" style="margin-bottom:20px"></div>
 
     <!-- 可移除項目表 -->
     <div class="data-table-wrapper">
