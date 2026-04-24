@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TTO Analysis — CP Test 時間優化分析工具</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="min-h-screen">
+
+  <!-- ═══════════════════════ 上傳畫面 ═══════════════════════ -->
+  <div id="upload-screen">
+
+    <header class="gradient-header text-white py-12 px-6 text-center relative">
+      <!-- 主題切換按鈕 -->
+      <button id="theme-toggle-upload" class="theme-toggle-btn upload-theme-toggle" onclick="APP.toggleTheme()" title="切換主題">
+        <span id="theme-icon-upload">☀</span>
+        <span id="theme-label-upload">亮色</span>
+      </button>
+
+      <div class="flex justify-center mb-4">
+        <svg class="w-20 h-20" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="18" y="18" width="44" height="44" rx="4" stroke="white" stroke-width="2" fill="rgba(255,255,255,0.1)"/>
+          <rect x="26" y="26" width="12" height="12" rx="2" fill="rgba(255,255,255,0.4)"/>
+          <rect x="42" y="26" width="12" height="12" rx="2" fill="rgba(255,255,255,0.4)"/>
+          <rect x="26" y="42" width="12" height="12" rx="2" fill="rgba(255,255,255,0.4)"/>
+          <rect x="42" y="42" width="12" height="12" rx="2" fill="rgba(255,255,255,0.4)"/>
+          <line x1="8"  y1="30" x2="18" y2="30" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="8"  y1="40" x2="18" y2="40" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="8"  y1="50" x2="18" y2="50" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="62" y1="30" x2="72" y2="30" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="62" y1="40" x2="72" y2="40" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="62" y1="50" x2="72" y2="50" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="30" y1="8"  x2="30" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="40" y1="8"  x2="40" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="50" y1="8"  x2="50" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="30" y1="62" x2="30" y2="72" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="40" y1="62" x2="40" y2="72" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="50" y1="62" x2="50" y2="72" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h1 class="text-5xl font-extrabold tracking-tight mb-3">TTO Analysis</h1>
+      <p class="text-blue-200 text-xl mb-5">NOR Flash CP Test 時間優化分析工具</p>
+      <div class="flex justify-center flex-wrap gap-3 text-sm">
+        <span class="tag-pill">📊 良率失效分析</span>
+        <span class="tag-pill">📋 測試項目分類</span>
+        <span class="tag-pill">⏱ 時間節省估算</span>
+        <span class="tag-pill">📤 Excel 報告匯出</span>
+      </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-10">
+
+      <!-- 步驟一：上傳 -->
+      <p class="step-label">步驟一：上傳分析檔案</p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+
+        <!-- CP Summary -->
+        <div class="upload-zone upload-zone--blue" id="zone-cp"
+             ondragover="APP.onDragOver(event,'zone-cp')"
+             ondragleave="APP.onDragLeave(event,'zone-cp')"
+             ondrop="APP.onDrop(event,'cp')">
+          <input type="file" id="input-cp" accept=".xlsx,.xls" class="hidden"
+                 onchange="APP.onFileChange('cp',this.files)">
+          <label for="input-cp" class="upload-zone__label">
+            <svg class="upload-zone__icon text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <path d="M8 13h8M8 17h5"/>
+            </svg>
+            <span class="upload-zone__title">CP Summary</span>
+            <span class="upload-zone__hint">*_CP_Summary.xlsx</span>
+            <span id="cp-filename" class="upload-zone__filename hidden"></span>
+            <span class="upload-zone__action" id="cp-action">拖曳或點擊上傳</span>
+          </label>
+        </div>
+
+        <!-- MSS -->
+        <div class="upload-zone upload-zone--green" id="zone-mss"
+             ondragover="APP.onDragOver(event,'zone-mss')"
+             ondragleave="APP.onDragLeave(event,'zone-mss')"
+             ondrop="APP.onDrop(event,'mss')">
+          <input type="file" id="input-mss" accept=".xlsx,.xls" class="hidden"
+                 onchange="APP.onFileChange('mss',this.files)">
+          <label for="input-mss" class="upload-zone__label">
+            <svg class="upload-zone__icon text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <path d="M8 13h8M8 17h5"/>
+            </svg>
+            <span class="upload-zone__title">MSS</span>
+            <span class="upload-zone__hint">*_CP_MSS.xlsx</span>
+            <span id="mss-filename" class="upload-zone__filename hidden"></span>
+            <span class="upload-zone__action" id="mss-action">拖曳或點擊上傳</span>
+          </label>
+        </div>
+
+        <!-- Rawdata -->
+        <div class="upload-zone upload-zone--amber" id="zone-raw"
+             ondragover="APP.onDragOver(event,'zone-raw')"
+             ondragleave="APP.onDragLeave(event,'zone-raw')"
+             ondrop="APP.onDrop(event,'raw')">
+          <input type="file" id="input-raw" accept=".txt,.TXT" multiple class="hidden"
+                 onchange="APP.onFileChange('raw',this.files)">
+          <label for="input-raw" class="upload-zone__label">
+            <svg class="upload-zone__icon text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9l-7-7z"/>
+              <polyline points="13 2 13 9 20 9"/>
+              <line x1="8" y1="13" x2="16" y2="13"/>
+              <line x1="8" y1="17" x2="16" y2="17"/>
+            </svg>
+            <span class="upload-zone__title">Rawdata TXT</span>
+            <span class="upload-zone__hint">*_DATALOG_*.TXT（選填，可多選）</span>
+            <span id="raw-filenames" class="upload-zone__filename hidden"></span>
+            <span class="upload-zone__action" id="raw-action">拖曳或點擊上傳</span>
+          </label>
+        </div>
+
+      </div>
+
+      <!-- 步驟二：閾值 -->
+      <p class="step-label">步驟二：設定分析閾值</p>
+      <div class="threshold-card">
+        <div class="grid grid-cols-2 gap-6">
+          <div>
+            <label class="threshold-label">🟢 極低風險閾值 <span class="threshold-label-muted">(ppm)</span></label>
+            <input type="number" id="thr-very-low" value="50" min="0" max="10000"
+                   class="threshold-input">
+            <p class="threshold-hint">低於此值 → 低風險可移除</p>
+          </div>
+          <div>
+            <label class="threshold-label">🟡 低風險閾值 <span class="threshold-label-muted">(ppm)</span></label>
+            <input type="number" id="thr-low" value="500" min="0" max="100000"
+                   class="threshold-input">
+            <p class="threshold-hint">低於此值 → 建議觀察</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 步驟三：分析 -->
+      <p class="step-label">步驟三：執行分析</p>
+      <div class="text-center mb-8">
+        <button id="btn-analyze" disabled
+                class="analyze-btn px-12 py-4 text-white rounded-2xl font-bold text-lg shadow-lg"
+                onclick="APP.startAnalysis()">
+          ▶ 開始分析
+        </button>
+        <p class="text-xs mt-3" style="color:var(--text-muted)">需上傳 CP Summary + MSS 才能開始分析</p>
+      </div>
+
+      <!-- 進度 -->
+      <div id="progress-section" class="hidden max-w-xl mx-auto">
+        <div class="progress-card">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="loading-spinner"></div>
+            <p id="progress-text" class="progress-text">準備中...</p>
+          </div>
+          <div class="progress-track">
+            <div id="progress-bar" class="progress-bar-fill h-3 rounded-full transition-all duration-500" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ═══════════════════════ 儀表板畫面 ═══════════════════════ -->
+  <div id="dashboard-screen" class="hidden">
+
+    <!-- 頂部工具列 -->
+    <div class="gradient-header sticky top-0 z-20 px-6 py-4 flex items-center justify-between shadow-md">
+      <div class="text-white flex items-center gap-3">
+        <svg class="w-8 h-8 opacity-80" viewBox="0 0 80 80" fill="none">
+          <rect x="18" y="18" width="44" height="44" rx="4" stroke="white" stroke-width="2" fill="rgba(255,255,255,0.1)"/>
+          <rect x="26" y="26" width="12" height="12" rx="2" fill="rgba(255,255,255,0.5)"/>
+          <rect x="42" y="26" width="12" height="12" rx="2" fill="rgba(255,255,255,0.5)"/>
+          <rect x="26" y="42" width="12" height="12" rx="2" fill="rgba(255,255,255,0.5)"/>
+          <rect x="42" y="42" width="12" height="12" rx="2" fill="rgba(255,255,255,0.5)"/>
+        </svg>
+        <div>
+          <span id="db-product" class="text-xl font-bold"></span>
+          <span id="db-timestamp" class="text-blue-200 text-sm ml-3"></span>
+        </div>
+      </div>
+      <div class="flex gap-3 items-center">
+        <!-- 主題切換按鈕 -->
+        <button id="theme-toggle-dash" class="theme-toggle-btn" onclick="APP.toggleTheme()" title="切換主題">
+          <span id="theme-icon-dash">☀</span>
+          <span id="theme-label-dash">亮色</span>
+        </button>
+        <button onclick="APP.doExport()"
+                class="bg-white text-blue-700 px-5 py-2 rounded-xl text-sm font-bold hover:bg-blue-50 transition-colors shadow-sm">
+          📤 匯出 Excel
+        </button>
+        <button onclick="APP.goBack()"
+                class="bg-white/20 text-white border border-white/30 px-5 py-2 rounded-xl text-sm font-bold hover:bg-white/30 transition-colors">
+          ← 重新上傳
+        </button>
+      </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-4 py-6">
+      <!-- 全局 KPI -->
+      <div id="global-kpi" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></div>
+
+      <!-- 站點分頁 + 內容 -->
+      <div class="dashboard-card">
+        <div class="flex overflow-x-auto border-b px-4 pt-4 gap-1" id="station-tabs" style="border-color:var(--border)"></div>
+        <div id="station-content" class="p-6 min-h-96"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="hidden fixed bottom-6 right-6 z-50 max-w-sm">
+    <div class="toast-body toast-anim">
+      <span id="toast-icon"></span>
+      <span id="toast-message"></span>
+    </div>
+  </div>
+
+  <script src="js/parsers.js"></script>
+  <script src="js/analyzer.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/exporter.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
