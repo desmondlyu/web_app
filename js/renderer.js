@@ -42,7 +42,7 @@ function renderDashboard(result) {
   document.getElementById('db-timestamp').textContent =
     '分析時間：' + new Date(result.generated_at).toLocaleString('zh-TW');
 
-  renderGlobalKPI(result);
+  renderGlobalKPI(result, window._TTORawData);
   renderStationTabs(result);
 }
 
@@ -50,34 +50,96 @@ function renderDashboard(result) {
 // 全局 KPI
 // ──────────────────────────────────────────────────────────────
 
-function renderGlobalKPI(result) {
-  let totalItems = 0, totalRemovable = 0, totalRepair = 0, totalTimeSec = 0;
+function renderGlobalKPI(result, rawData) {
+  // ── MSS 統計（從 result 取）──
+  let totalMSSItems = 0;
+  const stationCount = Object.keys(result.stations).length;
   for (const st of Object.values(result.stations)) {
-    totalItems     += st.summary.total_items;
-    totalRemovable += st.summary.removable_count;
-    totalRepair    += st.summary.repair_item_count;
-    totalTimeSec   += st.summary.total_removable_time_sec;
+    totalMSSItems += st.summary.total_items;
   }
 
-  const timeStr = totalTimeSec >= 60
-    ? `${(totalTimeSec / 60).toFixed(1)} min`
-    : `${totalTimeSec.toFixed(2)} s`;
+  // ── 時間格式輔助 (秒 → h m s 或 min) ──
+  function _fmtTime(sec) {
+    if (sec <= 0) return '—';
+    if (sec < 60)  return `${sec.toFixed(1)} s`;
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.round(sec % 60);
+    if (h > 0)  return `${h}h ${m}m ${s}s`;
+    return `${m}m ${s}s`;
+  }
+
+  // ── rawData KPI ──
+  let totalTestTimeSec = 0;
+  let totalExecCount   = 0;
+  let totalUniqueItems = 0;
+  let bestStation = '—', bestStationTime = 0, bestStationTimeStr = '—';
+
+  if (rawData && rawData.stations) {
+    for (const [stName, stData] of Object.entries(rawData.stations)) {
+      let stTime = 0;
+      let stExec = 0;
+      const itemValues = Object.values(stData.items || {});
+      for (const item of itemValues) {
+        stTime += item.time_sec   || 0;
+        stExec += item.exec_count || 0;
+      }
+      totalTestTimeSec += stTime;
+      totalExecCount   += stExec;
+      totalUniqueItems += itemValues.length;
+      if (stTime > bestStationTime) {
+        bestStationTime    = stTime;
+        bestStation        = stName;
+        bestStationTimeStr = _fmtTime(stTime);
+      }
+    }
+  }
+
+  const totalTimeStr   = rawData ? _fmtTime(totalTestTimeSec) : '— 請上傳 Rawdata —';
+  const repeatStr      = rawData ? (totalExecCount - totalUniqueItems).toLocaleString() : '—';
+  const subTestTime    = rawData ? bestStationTimeStr : '—';
 
   const cards = [
-    { label: '總測試項目數', value: totalItems,     color: '#2563EB', icon: '📋' },
-    { label: '可移除項目數', value: totalRemovable, color: '#16A34A', icon: '✅' },
-    { label: 'Repair 保護項', value: totalRepair,  color: '#9333EA', icon: '🔧' },
-    { label: '估計節省時間',  value: timeStr,       color: '#D97706', icon: '⏱' }
+    {
+      icon:    '🕐',
+      label:   '總體測試時間',
+      value:   totalTimeStr,
+      sub:     `各站點加總 (${result.product})`,
+      color:   '#60a5fa'   // blue
+    },
+    {
+      icon:    '📊',
+      label:   '重複測試執行次數',
+      value:   repeatStr,
+      sub:     rawData ? '各站點重複執行次數合計' : '請上傳 Rawdata',
+      color:   '#f87171'   // red-400
+    },
+    {
+      icon:    '⭐',
+      label:   '最耗時站點',
+      value:   bestStation,
+      sub:     subTestTime,
+      color:   '#fb923c'   // orange-400
+    },
+    {
+      icon:    '📋',
+      label:   'MSS 總測試項目',
+      value:   totalMSSItems.toLocaleString(),
+      sub:     `${result.product} | ${stationCount} stations`,
+      color:   '#818cf8'   // indigo-400
+    }
   ];
 
   document.getElementById('global-kpi').innerHTML = cards.map(c => `
     <div class="kpi-card">
-      <div style="font-size:1.4rem;margin-bottom:4px">${c.icon}</div>
+      <div style="font-size:1.1rem;margin-bottom:4px;opacity:0.7">${c.icon}</div>
       <div class="kpi-card__value" style="color:${c.color}">${c.value}</div>
       <div class="kpi-card__label">${c.label}</div>
+      <div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px">${c.sub}</div>
     </div>
   `).join('');
 }
+
 
 // ──────────────────────────────────────────────────────────────
 // Top 10 最耗時 Test Items（跨站點）
