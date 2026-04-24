@@ -1,12 +1,6 @@
 # TTO Analysis Web App
 
-NOR Flash CP Test 時間優化分析工具 — 純靜態網頁版，支援 GitHub Pages 部署。
-
-## 🚀 快速部署到 GitHub Pages
-
-1. 將整個 `web_app/` 目錄推送至 GitHub Repository
-2. 進入 **Settings → Pages**，來源選擇 `main` branch，目錄選 `/web_app`（或 root）
-3. 等待部署完成，即可透過公開 URL 分享給他人使用
+NOR Flash CP Test 時間優化分析工具 — 純靜態網頁版，直接用瀏覽器開啟即可使用。
 
 ## 📁 支援的輸入檔案
 
