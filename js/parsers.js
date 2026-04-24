@@ -4,9 +4,23 @@
 
 /** 固定欄位（不是 CAT 代碼，略過） */
 const SKIP_COLS = [
-  'Lot No','Wafer','Process','Test Start Time','Product','Program',
-  'Loop','Sub. Ver.','Temper.','Sk. Yld.','Wf. Yld.','Pr. Ya','Pr. Ydc',
-  'BIN1','BIN2','BIN3','BIN4','BIN5'
+  // ── 基本識別欄位 ──
+  'Cnt.', 'Lot No', 'Wafer', 'Process', 'Layer',
+  // ── 時間欄位 ──
+  'Test Start Time', 'Test End Time', 'Period',
+  // ── 產品/設備資訊 ──
+  'Product', 'Tester', 'Probe Card', 'T7Code', 'Program',
+  'Loop', 'Sub. Ver.',
+  // ── Flag 欄位 ──
+  'Partial', 'EFSuspend', 'EFuse', 'RetestFail', 'Merge',
+  'Prober Setup File',
+  // ── 溫度、良率統計 ──
+  'Temper.', 'O.D.',
+  'Die Cnt.', 'Net', 'Pr. Yld.',
+  'Sk. Cnt.', 'Sk. Net', 'Sk. Yld.',
+  'Wf. Yld.', 'Pr. Ya', 'Pr. Ydc',
+  // ── BIN 分類 ──
+  'BIN1', 'BIN2', 'BIN3', 'BIN4', 'BIN5'
 ];
 
 /** PASS 類別（不算 Fail CAT） */
