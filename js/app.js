@@ -153,7 +153,8 @@ async function startAnalysis() {
     _state.rawData = rawData;
     _state.product = product;
 
-    window._TTOResult = result; // renderer.js 的 onclick 需要存取
+    window._TTOResult  = result;  // renderer.js 的 onclick 需要存取
+    window._TTORawData = rawData; // renderTop10 需要存取
 
     await _sleep(80); // 讓 progress bar 動畫顯示
 

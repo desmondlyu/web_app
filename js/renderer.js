@@ -83,96 +83,114 @@ function renderGlobalKPI(result) {
 // Top 10 最耗時 Test Items（跨站點）
 // ──────────────────────────────────────────────────────────────
 
-function renderTop10(result) {
+function renderTop10(result, rawData) {
   const container = document.getElementById('top10-station-section');
   if (!container) return;
 
-  // ── 從「所有站點 × 所有分類」收集 items，以 test_item 名稱跨站點彙整 ──
-  const itemMap = new Map(); // key: test_item → { name, totalTime, stations: Set }
-
-  for (const [stName, stData] of Object.entries(result.stations)) {
-    const allItems = [
-      ...(stData.removable     || []),
-      ...(stData.repair_items  || []),
-      ...(stData.not_removable || [])
-    ];
-    for (const item of allItems) {
-      const name = item.test_item;
-      const t    = item.saved_time_sec || 0;
-      if (!itemMap.has(name)) {
-        itemMap.set(name, { name, totalTime: t, stations: new Set([stName]) });
-      } else {
-        const rec = itemMap.get(name);
-        rec.totalTime += t;
-        rec.stations.add(stName);
+  // ── rawData 存在：直接從 rawData.stations 取 (station, item) 計算 ──
+  if (rawData && rawData.stations && Object.keys(rawData.stations).length) {
+    const rows = [];
+    for (const [stName, stData] of Object.entries(rawData.stations)) {
+      for (const item of Object.values(stData.items || {})) {
+        if (item.time_sec > 0) {
+          rows.push({
+            station:    stName,
+            item_name:  item.item_name,
+            exec_count: item.exec_count || 0,
+            time_sec:   item.time_sec
+          });
+        }
       }
     }
-  }
 
-  // ── 排序：依 totalTime 降冪，取前 10 ──
-  const top10 = [...itemMap.values()]
-    .sort((a, b) => b.totalTime - a.totalTime)
-    .slice(0, 10);
+    rows.sort((a, b) => b.time_sec - a.time_sec);
+    const top10   = rows.slice(0, 10);
+    const maxTime = top10.length > 0 ? top10[0].time_sec : 1;
 
-  const hasTimeData = top10.length > 0 && top10[0].totalTime > 0;
+    const rankCls = i => ['top10-rank-1','top10-rank-2','top10-rank-3'][i] || 'top10-rank-other';
+    const timeFmt = t => t >= 60 ? (t / 60).toFixed(2) + ' min' : t.toFixed(1) + ' s';
 
-  const rankClass = i => ['top10-rank-1','top10-rank-2','top10-rank-3'][i] || 'top10-rank-other';
-
-  let bodyHTML;
-  if (!hasTimeData) {
-    // 沒有 rawdata → 顯示友善提示，但仍列出 Top 10 Test Item 名稱（依出現站點數排序）
-    const topByStation = [...itemMap.values()]
-      .sort((a, b) => b.stations.size - a.stations.size)
-      .slice(0, 10);
-
-    bodyHTML = topByStation.map((r, i) => {
-      const stChips = [...r.stations].map(s =>
-        `<span class="top10-chip">${_esc(s)}</span>`
-      ).join('');
+    const bodyHTML = top10.map((r, i) => {
+      const barW   = (r.time_sec / maxTime * 100).toFixed(1);
+      const pct    = (r.time_sec / maxTime * 100).toFixed(1);
+      const cntCol = r.exec_count > 1
+        ? `<strong style="color:${r.exec_count > 10 ? '#f97316' : 'var(--text-primary)'}">${r.exec_count.toLocaleString()}</strong>`
+        : `${r.exec_count}`;
       return `
         <tr>
-          <td><span class="top10-rank ${rankClass(i)}">${i + 1}</span></td>
-          <td class="top10-item-name" title="${_esc(r.name)}">${_esc(r.name)}</td>
-          <td style="text-align:center">${stChips}</td>
-          <td colspan="2" style="font-size:0.75rem;color:var(--text-muted);font-style:italic">
-            — 請上傳 Rawdata TXT 以取得執行時間 —
-          </td>
-        </tr>`;
-    }).join('');
-  } else {
-    const maxTime = top10[0].totalTime;
-    bodyHTML = top10.map((r, i) => {
-      const barW    = (r.totalTime / maxTime * 100).toFixed(1);
-      const pct     = (r.totalTime / maxTime * 100).toFixed(1);
-      const stChips = [...r.stations].map(s =>
-        `<span class="top10-chip">${_esc(s)}</span>`
-      ).join('');
-      const timeStr = r.totalTime >= 60
-        ? (r.totalTime / 60).toFixed(2) + ' min'
-        : r.totalTime.toFixed(3) + ' s';
-      return `
-        <tr>
-          <td><span class="top10-rank ${rankClass(i)}">${i + 1}</span></td>
-          <td class="top10-item-name" title="${_esc(r.name)}">${_esc(r.name)}</td>
-          <td style="text-align:center">${stChips}</td>
+          <td><span class="top10-rank ${rankCls(i)}">${i + 1}</span></td>
+          <td class="top10-item-name" title="${_esc(r.item_name)}">${_esc(r.item_name)}</td>
+          <td style="text-align:center"><span class="top10-chip">${_esc(r.station)}</span></td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">${cntCol}</td>
           <td>
             <div class="top10-bar-row">
               <div class="top10-bar-track">
                 <div class="top10-bar-fill" style="width:${barW}%"></div>
               </div>
-              <span class="top10-bar-val">${timeStr}</span>
+              <span class="top10-bar-val">${timeFmt(r.time_sec)}</span>
             </div>
           </td>
           <td style="text-align:right;font-size:0.78rem;font-weight:700;color:#f97316">${pct}%</td>
         </tr>`;
     }).join('');
+
+    container.innerHTML = `
+      <div class="data-table-wrapper" style="margin-bottom:0">
+        <div class="data-table-header" style="background:linear-gradient(135deg,#c2410c 0%,#f97316 100%)">
+          <h4>⏱ Top 10 最耗時 Test Items（跨站點，依 Rawdata 實際總執行時間排序）</h4>
+        </div>
+        <div class="virtual-scroll-outer">
+          <table class="data-table">
+            <thead><tr>
+              <th style="width:44px">#</th>
+              <th>Test Item 名稱</th>
+              <th style="text-align:center">站點</th>
+              <th style="text-align:right;width:80px">執行次數</th>
+              <th>總時間 (S)</th>
+              <th style="text-align:right;width:64px">佔比</th>
+            </tr></thead>
+            <tbody>${bodyHTML}</tbody>
+          </table>
+        </div>
+      </div>`;
+    return;
   }
+
+  // ── Fallback：無 Rawdata，列項目名稱（依出現站點數排序）──
+  const itemMap = new Map();
+  for (const [stName, stData] of Object.entries(result.stations || {})) {
+    const all = [
+      ...(stData.removable || []),
+      ...(stData.repair_items || []),
+      ...(stData.not_removable || [])
+    ];
+    for (const item of all) {
+      if (!itemMap.has(item.test_item))
+        itemMap.set(item.test_item, { name: item.test_item, stations: new Set([stName]) });
+      else
+        itemMap.get(item.test_item).stations.add(stName);
+    }
+  }
+  const top10fb  = [...itemMap.values()].sort((a, b) => b.stations.size - a.stations.size).slice(0, 10);
+  const rankCls2 = i => ['top10-rank-1','top10-rank-2','top10-rank-3'][i] || 'top10-rank-other';
+  const fbBody   = top10fb.map((r, i) => {
+    const chips = [...r.stations].map(s => `<span class="top10-chip">${_esc(s)}</span>`).join('');
+    return `
+      <tr>
+        <td><span class="top10-rank ${rankCls2(i)}">${i + 1}</span></td>
+        <td class="top10-item-name" title="${_esc(r.name)}">${_esc(r.name)}</td>
+        <td style="text-align:center">${chips}</td>
+        <td colspan="3" style="font-size:0.75rem;color:var(--text-muted);font-style:italic">
+          — 請上傳 Rawdata TXT 以取得執行時間 —
+        </td>
+      </tr>`;
+  }).join('');
 
   container.innerHTML = `
     <div class="data-table-wrapper" style="margin-bottom:0">
       <div class="data-table-header" style="background:linear-gradient(135deg,#c2410c 0%,#f97316 100%)">
-        <h4>⏱ Top 10 最耗時 Test Items（跨站點，依估計節省時間加總排序）</h4>
-        ${hasTimeData ? '' : '<span style="font-size:0.7rem;opacity:0.8;color:#fff">（未上傳 Rawdata，依出現站點數排序）</span>'}
+        <h4>⏱ Top 10 最耗時 Test Items（跨站點）</h4>
+        <span style="font-size:0.7rem;opacity:0.8;color:#fff">（未上傳 Rawdata，依出現站點數排序）</span>
       </div>
       <div class="virtual-scroll-outer">
         <table class="data-table">
@@ -180,10 +198,9 @@ function renderTop10(result) {
             <th style="width:44px">#</th>
             <th>Test Item 名稱</th>
             <th style="text-align:center">出現站點</th>
-            <th>${hasTimeData ? '估計節省時間（加總）' : '出現站點'}</th>
-            <th style="text-align:right;width:64px">${hasTimeData ? '佔比' : ''}</th>
+            <th colspan="3"></th>
           </tr></thead>
-          <tbody>${bodyHTML}</tbody>
+          <tbody>${fbBody}</tbody>
         </table>
       </div>
     </div>`;
@@ -200,21 +217,21 @@ function renderStationTabs(result) {
 
   document.getElementById('station-tabs').innerHTML = names.map(name => `
     <button class="station-tab" data-station="${_eid(name)}"
-            onclick="RENDERER.switchStation('${_escJs(name)}', window._TTOResult)">
+            onclick="RENDERER.switchStation('${_escJs(name)}', window._TTOResult, window._TTORawData)">
       ${_esc(name)}
       <span style="font-size:0.65rem;opacity:0.65;margin-left:3px">(${result.stations[name].summary.removable_count}✂)</span>
     </button>
   `).join('');
 
   // 預設顯示第一個站點
-  RENDERER.switchStation(names[0], result);
+  RENDERER.switchStation(names[0], result, window._TTORawData);
 }
 
 // ──────────────────────────────────────────────────────────────
 // 切換站點
 // ──────────────────────────────────────────────────────────────
 
-function switchStation(stationName, result) {
+function switchStation(stationName, result, rawData) {
   // 更新分頁 active 狀態
   document.querySelectorAll('.station-tab').forEach(tab => {
     tab.classList.toggle('active', tab.dataset.station === _eid(stationName));
@@ -242,7 +259,7 @@ function switchStation(stationName, result) {
   _buildTable(`tbl-nr-${chartKey}`,  stData.not_removable, _colsNotRemovable());
 
   // Top 10 最耗時（跨站點）——放在可移除項目上方
-  renderTop10(result);
+  renderTop10(result, rawData);
 }
 
 // ──────────────────────────────────────────────────────────────
