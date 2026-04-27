@@ -46,9 +46,23 @@ const _state = {
 // ──────────────────────────────────────────────────────────────
 
 /**
+ * 產品別白名單
+ * 允許的產品別前綴：FAG*, EAG*, MAG*, AAG*, FCG*, FBG*
+ */
+const VALID_PRODUCTS = /^(FAG|EAG|MAG|AAG|FCG|FBG)[A-Z0-9]*$/i;
+
+/**
+ * 站點白名單
+ */
+const VALID_STATIONS = new Set([
+  'DS00', 'S1P1', 'DS03', 'DS05', 'SFIN', 'SPRE', 'DS07', 'DS08', 'DS09', 'DS04'
+]);
+
+/**
  * 檔案驗證規則定義
- * 格式：產品別_*_說明.ext
- * * 為萬用字符，不限定後面文字
+ * 格式：產品別_站點_DATALOG_*.TXT (Rawdata)
+ *       產品別_CP_Summary.xlsx (CP Summary)
+ *       產品別_CP_MSS.xlsx (MSS)
  */
 const FILE_VALIDATION_RULES = {
   cp: {
@@ -64,7 +78,9 @@ const FILE_VALIDATION_RULES = {
   raw: {
     pattern: /^([A-Za-z0-9]+)_([A-Za-z0-9]+)_DATALOG_.*\.txt$/i,
     hint: '產品別_站點_DATALOG_*.TXT',
-    desc: 'Rawdata TXT'
+    desc: 'Rawdata TXT',
+    productPattern: VALID_PRODUCTS,
+    stationList: VALID_STATIONS
   }
 };
 
@@ -89,7 +105,27 @@ function validateFileName(filename, type) {
   if (type === 'cp' || type === 'mss') {
     return { valid: true, product: match[1] };
   } else if (type === 'raw') {
-    return { valid: true, product: match[1], station: match[2] };
+    const product = match[1];
+    const station = match[2];
+
+    // 驗證產品別是否在白名單中
+    if (!rule.productPattern.test(product)) {
+      return {
+        valid: false,
+        error: `產品別 "${product}" 不符合規則。允許的產品別：FAG*, EAG*, MAG*, AAG*, FCG*, FBG*`
+      };
+    }
+
+    // 驗證站點是否在白名單中
+    if (!rule.stationList.has(station.toUpperCase())) {
+      const validStations = Array.from(rule.stationList).join(', ');
+      return {
+        valid: false,
+        error: `站點 "${station}" 不符合規則。允許的站點：${validStations}`
+      };
+    }
+
+    return { valid: true, product, station };
   }
 
   return { valid: true };
