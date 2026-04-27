@@ -42,6 +42,86 @@ const _state = {
 };
 
 // ──────────────────────────────────────────────────────────────
+// 檔案驗證規則
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * 檔案驗證規則定義
+ * 格式：產品別_*_說明.ext
+ * * 為萬用字符，不限定後面文字
+ */
+const FILE_VALIDATION_RULES = {
+  cp: {
+    pattern: /^([A-Za-z0-9]+)_CP_Summary\.xlsx$/i,
+    hint: '產品別_CP_Summary.xlsx',
+    desc: 'CP Summary Excel'
+  },
+  mss: {
+    pattern: /^([A-Za-z0-9]+)_CP_MSS\.xlsx$/i,
+    hint: '產品別_CP_MSS.xlsx',
+    desc: 'MSS Excel'
+  },
+  raw: {
+    pattern: /^([A-Za-z0-9]+)_([A-Za-z0-9]+)_DATALOG_.*\.txt$/i,
+    hint: '產品別_站點_DATALOG_*.TXT',
+    desc: 'Rawdata TXT'
+  }
+};
+
+/**
+ * 驗證單個檔案名稱是否符合規則
+ * @param {string} filename - 檔案名稱
+ * @param {string} type - 檔案類型 ('cp', 'mss', 'raw')
+ * @returns {Object} { valid: boolean, product?: string, station?: string, error?: string }
+ */
+function validateFileName(filename, type) {
+  const rule = FILE_VALIDATION_RULES[type];
+  if (!rule) return { valid: false, error: '未知的檔案類型' };
+
+  const match = filename.match(rule.pattern);
+  if (!match) {
+    return {
+      valid: false,
+      error: `檔案名稱不符合規則。應為：${rule.hint}`
+    };
+  }
+
+  if (type === 'cp' || type === 'mss') {
+    return { valid: true, product: match[1] };
+  } else if (type === 'raw') {
+    return { valid: true, product: match[1], station: match[2] };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * 驗證多個 Rawdata 檔案的產品別一致性
+ * @param {Array<File>} files - 檔案陣列
+ * @returns {Object} { valid: boolean, product?: string, error?: string }
+ */
+function validateRawdataConsistency(files) {
+  if (!files.length) return { valid: true };
+
+  let expectedProduct = null;
+  for (const file of files) {
+    const result = validateFileName(file.name, 'raw');
+    if (!result.valid) return result;
+
+    if (!expectedProduct) {
+      expectedProduct = result.product;
+    } else if (result.product !== expectedProduct) {
+      return {
+        valid: false,
+        error: `Rawdata 檔案產品別不一致。檔案 "${file.name}" 產品別為 "${result.product}"，但預期為 "${expectedProduct}"`
+      };
+    }
+  }
+
+  return { valid: true, product: expectedProduct };
+}
+
+// ──────────────────────────────────────────────────────────────
 // 檔案上傳處理
 // ──────────────────────────────────────────────────────────────
 
@@ -49,20 +129,78 @@ function onFileChange(type, files) {
   if (!files || !files.length) return;
 
   if (type === 'cp') {
+    const validation = validateFileName(files[0].name, 'cp');
+    if (!validation.valid) {
+      showToast('⚠️', validation.error, true);
+      // 清除上傳區
+      _clearFileZone('zone-cp', 'cp-filename', 'cp-action', 'has-file--blue');
+      _state.cpFile = null;
+      _updateAnalyzeBtn();
+      return;
+    }
     _state.cpFile = files[0];
     _setFileLabel('cp-filename', files[0].name, 'zone-cp', 'has-file--blue', 'cp-action');
+
   } else if (type === 'mss') {
+    const validation = validateFileName(files[0].name, 'mss');
+    if (!validation.valid) {
+      showToast('⚠️', validation.error, true);
+      _clearFileZone('zone-mss', 'mss-filename', 'mss-action', 'has-file--green');
+      _state.mssFile = null;
+      _updateAnalyzeBtn();
+      return;
+    }
     _state.mssFile = files[0];
     _setFileLabel('mss-filename', files[0].name, 'zone-mss', 'has-file--green', 'mss-action');
+
   } else if (type === 'raw') {
-    _state.rawFiles = Array.from(files);
-    const label = _state.rawFiles.length === 1
-      ? files[0].name
-      : `${_state.rawFiles.length} 個 TXT 檔案`;
+    // 驗證每個 Rawdata 檔案名稱
+    const validatedFiles = [];
+    for (const file of files) {
+      const validation = validateFileName(file.name, 'raw');
+      if (!validation.valid) {
+        showToast('⚠️', `${file.name}: ${validation.error}`, true);
+        continue;
+      }
+      validatedFiles.push(file);
+    }
+
+    if (!validatedFiles.length) {
+      _clearFileZone('zone-raw', 'raw-filenames', 'raw-action', 'has-file--amber');
+      _state.rawFiles = [];
+      _updateAnalyzeBtn();
+      return;
+    }
+
+    // 驗證產品別一致性
+    const consistency = validateRawdataConsistency(validatedFiles);
+    if (!consistency.valid) {
+      showToast('⚠️', consistency.error, true);
+      _clearFileZone('zone-raw', 'raw-filenames', 'raw-action', 'has-file--amber');
+      _state.rawFiles = [];
+      _updateAnalyzeBtn();
+      return;
+    }
+
+    _state.rawFiles = validatedFiles;
+    const label = validatedFiles.length === 1
+      ? validatedFiles[0].name
+      : `✓ ${validatedFiles.length} 個 TXT 檔案`;
     _setFileLabel('raw-filenames', label, 'zone-raw', 'has-file--amber', 'raw-action');
   }
 
   _updateAnalyzeBtn();
+}
+
+function _clearFileZone(zoneId, labelId, actionId, hasFileClass) {
+  const zone = document.getElementById(zoneId);
+  if (zone) zone.classList.remove(hasFileClass);
+
+  const label = document.getElementById(labelId);
+  if (label) { label.textContent = ''; label.classList.add('hidden'); }
+
+  const action = document.getElementById(actionId);
+  if (action) action.textContent = '拖曳或點擊上傳';
 }
 
 function _setFileLabel(labelId, text, zoneId, hasFileClass, actionId) {
@@ -90,15 +228,21 @@ function onDrop(e, type) {
   const zoneMap = { cp: 'zone-cp', mss: 'zone-mss', raw: 'zone-raw' };
   document.getElementById(zoneMap[type])?.classList.remove('dragover');
 
-  // 驗證拖入的檔案類型
+  // 驗證拖入的檔案類型 + 名稱格式
   const files = e.dataTransfer.files;
   if (type === 'raw') {
     const txtFiles = Array.from(files).filter(f => /\.txt$/i.test(f.name));
-    if (!txtFiles.length) { showToast('⚠️', '請拖入 .TXT 格式的 rawdata 檔案', true); return; }
+    if (!txtFiles.length) {
+      showToast('⚠️', '請拖入 .TXT 格式的 rawdata 檔案', true);
+      return;
+    }
     onFileChange(type, txtFiles);
   } else {
     const xlFile = Array.from(files).find(f => /\.xlsx?$/i.test(f.name));
-    if (!xlFile) { showToast('⚠️', '請拖入 .xlsx 或 .xls 格式的 Excel 檔案', true); return; }
+    if (!xlFile) {
+      showToast('⚠️', '請拖入 .xlsx 或 .xls 格式的 Excel 檔案', true);
+      return;
+    }
     onFileChange(type, [xlFile]);
   }
 }
