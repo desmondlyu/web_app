@@ -10,7 +10,7 @@ NOR Flash CP Test 時間優化分析工具 — 純靜態網頁版，直接用瀏
 |----------|---------|------|
 | **CP Summary Excel** | `產品別_CP_Summary.xlsx` | 各站點良率資料（必填）|
 | **MSS Excel** | `產品別_CP_MSS.xlsx` | 測試項目定義（必填）|
-| **Rawdata TXT** | `產品別_站點_DATALOG_*.TXT` | 執行頻率 + 時間資料（選填，可多選）|
+| **Rawdata TXT** | `產品別_站點*.txt` | 執行頻率 + 時間資料（選填，可多選）|
 
 ### 檔案命名規則
 
@@ -20,8 +20,8 @@ NOR Flash CP Test 時間優化分析工具 — 純靜態網頁版，直接用瀏
 **MSS** 範例：`EAG119C_CP_MSS.xlsx`
 - 格式：`產品別_CP_MSS.xlsx`
 
-**Rawdata TXT** 範例：`EAG119C_DS00_DATALOG_20260425.txt`
-- 格式：`產品別_站點_DATALOG_*.TXT`
+**Rawdata TXT** 範例：`EAG119_SFIN.txt` 或 `EAG119_SFIN_DATALOG_X37Y16_DBIN1.txt`
+- 格式：`產品別_站點*.txt`（寬鬆格式，`*` 代表任意字符）
 - 允許的產品別前綴：**FAG*, EAG*, MAG*, AAG*, FCG*, FBG***
 - 允許的站點：**DS00, S1P1, DS03, DS05, SFIN, SPRE, DS07, DS08, DS09, DS04**
 - 多個 Rawdata 檔案必須來自同一產品別
@@ -135,7 +135,8 @@ max_ppm = (最高失效%) × 10000
 A：檔案名稱格式不符合規則。請確保：
 - CP Summary：`產品別_CP_Summary.xlsx`
 - MSS：`產品別_CP_MSS.xlsx`
-- Rawdata：`產品別_站點_DATALOG_*.TXT`（產品別和站點必須符合允許清單）
+- Rawdata：`產品別_站點*.txt`（例：`EAG119_SFIN.txt` 或 `EAG119_SFIN_DATALOG_X37Y16_DBIN1.txt`）
+  - 產品別和站點必須符合允許清單
 
 **Q：為什麼分析結果為 0 ppm？**  
 A：這是正常現象，表示該站點在所有 wafer 上沒有失效。
