@@ -152,6 +152,8 @@ function renderTop10(result, rawData) {
   // ── rawData 存在：直接從 rawData.stations 取 (station, item) 計算 ──
   if (rawData && rawData.stations && Object.keys(rawData.stations).length) {
     const rows = [];
+    let totalTestTimeSec = 0;  // 計算總體測試時間
+    
     for (const [stName, stData] of Object.entries(rawData.stations)) {
       for (const item of Object.values(stData.items || {})) {
         if (item.time_sec > 0) {
@@ -161,20 +163,21 @@ function renderTop10(result, rawData) {
             exec_count: item.exec_count || 0,
             time_sec:   item.time_sec
           });
+          totalTestTimeSec += item.time_sec;  // 累加總時間
         }
       }
     }
 
     rows.sort((a, b) => b.time_sec - a.time_sec);
     const top10   = rows.slice(0, 10);
-    const maxTime = top10.length > 0 ? top10[0].time_sec : 1;
+    const maxTime = top10.length > 0 ? top10[0].time_sec : 1;  // 用於 bar 寬度
 
     const rankCls = i => ['top10-rank-1','top10-rank-2','top10-rank-3'][i] || 'top10-rank-other';
     const timeFmt = t => t >= 60 ? (t / 60).toFixed(2) + ' min' : t.toFixed(1) + ' s';
 
     const bodyHTML = top10.map((r, i) => {
-      const barW   = (r.time_sec / maxTime * 100).toFixed(1);
-      const pct    = (r.time_sec / maxTime * 100).toFixed(1);
+      const barW   = (r.time_sec / maxTime * 100).toFixed(1);  // bar 寬度：相對於 Top 1
+      const pct    = totalTestTimeSec > 0 ? (r.time_sec / totalTestTimeSec * 100).toFixed(1) : 0;  // 佔比：相對於總時間
       const cntCol = r.exec_count > 1
         ? `<strong style="color:${r.exec_count > 10 ? '#f97316' : 'var(--text-primary)'}">${r.exec_count.toLocaleString()}</strong>`
         : `${r.exec_count}`;

@@ -1,3 +1,76 @@
+<!-- ================================================================
+  🤖 AI SESSION CONTEXT — 給下一個 AI Session 看的專案記憶
+  最後更新：2026-04-27，Session b57db4f5-9bf9-49c7
+  ================================================================ -->
+
+## 🤖 AI 快速喚醒區（給 Copilot / AI 看）
+> 下次回到此專案，請先讀本節，再閱讀其他說明文件，即可還原完整開發背景。
+
+### 專案定位
+**TTO Analysis Web App** — NOR Flash CP 測試時間優化分析工具
+
+**Pipeline 架構**：
+```
+用戶上傳 CP_Summary + MSS Excel
+           ↓
+   js/parsers.js (格式自動偵測)
+           ↓
+   ┌─ 新格式 (2026+)：單頁 + Process 欄分組
+   │ 
+   └─ 舊格式 (相容)：多頁 (Sheet = 站點)
+           ↓
+   分析引擎：CAT 分類 → PPM 計算 → 風險評估
+           ↓
+   Tailwind + Chart.js 儀表板呈現
+           ↓
+   Excel 匯出報告（5 個工作表）
+```
+
+### 重要技術決策（2026-04-27 更新）
+
+| 決策項 | 做法 | 理由 |
+|--------|------|------|
+| **格式支援** | 雙格式自動偵測 (新 + 舊相容) | 減少使用者轉檔成本，提高易用性 |
+| **CAT 解析** | Process 欄後尋找 Wf. Yld.，再往後找 Bin Code | 語義定位比位置定位更穩定 |
+| **Pass CAT 定義** | {01, 02, 03, 04, 05, 07} (固定集合) | 與 MSS 標準一致 |
+| **PPM 公式** | (失效%) × 10000 | 業界標準單位 |
+| **風險分級** | 4 檔 (0 ppm / 50 ppm / 500 ppm / 有失效) | 符合半導體良率管制門檻 |
+| **資料隱私** | 瀏覽器端解析，無伺服器上傳 | 滿足公司資料安全政策 |
+
+### 格式偵測邏輯（核心）
+
+**新格式判定**：`1 個 Sheet + 有 Process 欄 + 有 Wf. Yld. 欄 → 新格式`  
+**Bin Code 定位**：`Wf. Yld. 欄後的所有欄位 → Bin Code 集合`  
+**站點分組**：`Process 欄值 (DS00/S1P1/DS05/SFIN/SPRE/DS03)`
+
+實作位置：
+- **Python 後端**：`C:\D_BACKUP\AI_Project\TTO_Agent\analysis_code\analyze_cp_yield.py`，函式 `_detectNewCPFormat()` (L210-225)
+- **Web App JS**：`C:\D_BACKUP\AI_Project\TTO_Agent\web_app\js\parsers.js`，函式 `_detectNewCPFormat()` (L210-225)
+
+### 已安裝 Skills
+
+- ✅ `cp-summary-analysis` (C:\Users\yplu\.copilot\skills\cp-summary-analysis)
+- ✅ `cp-yield-optimizer` (C:\D_BACKUP\AI_Project\TTO_Agent\.copilot\skills\cp-yield-optimizer)
+
+### 常見錯誤與解法
+
+| 錯誤 | 原因 | 解法 |
+|------|------|------|
+| `Cannot read property 'sheet_names' of undefined` | Excel 檔不存在或已損壞 | 檢查檔案路徑、重新匯出 Excel |
+| 站點數錯誤（多出 Sheet0 / Sheet1） | 舊格式偵測失敗（被認成新格式） | 確認 CP_Summary 只有一個 Sheet + 有 Process 欄 |
+| PPM 計算為 0 (全部通過) | 正常現象 | 若整個站點無失效，結果就是 0 ppm |
+| Rawdata 上傳無反應 | 檔案超過 10 MB 或格式非 TXT | 分割 Rawdata；檢查副檔名 |
+| 匯出 Excel 無法開啟 | SheetJS 與舊版 Excel 相容問題 | 用 Excel 2016+ 或 LibreOffice 開啟 |
+
+### 尚未完成的功能
+
+- [ ] **Split 欄位支援**：新格式缺少 DOE/Process Condition 資訊，需手動或上傳 DOE 對應表
+- [ ] **儀表板暗黑模式**：目前只有亮色 Tailwind，可加深夜間工作適用性
+- [ ] **多語言支援**：目前繁中，可加英文 / 簡中
+- [ ] **離線模式強化**：考慮 Service Worker 快取，網路斷線時仍可查詢歷史分析
+
+---
+
 # TTO Analysis Web App
 
 NOR Flash CP Test 時間優化分析工具 — 純靜態網頁版，直接用瀏覽器開啟即可使用。
