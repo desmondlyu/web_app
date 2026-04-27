@@ -35,6 +35,9 @@ const CODE_KEYWORDS = ['if ','for ','while ','def ','class ','return ','import '
 
 /**
  * 解析 CP Summary Excel 檔案
+ * 支援：
+ *   - 舊格式：多個工作表，每個 Sheet = 一個站點
+ *   - 新格式：單一工作表，Process 欄區分站點
  * @param {File} file
  * @returns {Promise<{stations: Object, product: string}>}
  *   stations[stationName].cat_stats[catCode] = { avg_ppm, max_ppm, never_occurred }
@@ -45,69 +48,180 @@ async function parseCPSummary(file) {
   const stations = {};
   let product = 'UNKNOWN';
 
-  for (const sheetName of wb.SheetNames) {
-    const ws   = wb.Sheets[sheetName];
+  // 檢查是否為新格式（單頁 + Process 欄）
+  const isNewFormat = _detectNewCPFormat(wb);
+
+  if (isNewFormat) {
+    // 新格式：單一工作表，按 Process 分組
+    const sheetName = wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
-    if (rows.length < 2) continue;
+    if (rows.length < 2) return { stations, product };
 
-    const header   = rows[0].map(h => (h != null ? String(h).trim() : ''));
+    const header = rows[0].map(h => (h != null ? String(h).trim() : ''));
     const lotNoIdx = header.indexOf('Lot No');
-    if (lotNoIdx === -1) continue;
-
+    const processIdx = header.indexOf('Process');
+    const wfYldIdx = header.indexOf('Wf. Yld.');
     const productIdx = header.indexOf('Product');
 
-    // 識別 Fail CAT 欄位（排除固定欄位和 PASS cats）
+    if (lotNoIdx === -1 || processIdx === -1) {
+      console.warn('[CP Parser] New format missing required columns');
+      return { stations, product };
+    }
+
+    // 識別 Fail CAT 欄位（在 Wf. Yld. 之後）
     const catCols = [];
-    for (let i = 0; i < header.length; i++) {
+    const startIdx = wfYldIdx !== -1 ? wfYldIdx + 1 : header.findIndex((h, i) => i > lotNoIdx && h && !SKIP_COLS.includes(h));
+    for (let i = startIdx; i < header.length; i++) {
       const n = header[i];
-      if (!n)                   continue;
+      if (!n) continue;
       if (SKIP_COLS.includes(n)) continue;
       if (PASS_CATS.includes(n)) continue;
       catCols.push({ idx: i, name: n });
     }
 
-    const catValues = {};
-    catCols.forEach(({ name }) => { catValues[name] = []; });
-
-    // 逐列解析（跳過 Lot No 為空的列：平均/摘要列）
+    // 按 Process 分組資料
+    const stationData = {};
     for (let r = 1; r < rows.length; r++) {
-      const row    = rows[r];
+      const row = rows[r];
       if (!row) continue;
       const lotVal = row[lotNoIdx];
       if (lotVal == null || String(lotVal).trim() === '') continue;
 
-      // 嘗試取得 product 名稱（取第一筆非空值）
+      const processVal = row[processIdx];
+      if (processVal == null) continue;
+      const station = String(processVal).trim();
+      if (!station) continue;
+
+      if (!stationData[station]) {
+        stationData[station] = {};
+      }
+
+      // 嘗試取得 product 名稱
       if (product === 'UNKNOWN' && productIdx !== -1 && row[productIdx] != null) {
         product = String(row[productIdx]).trim();
       }
 
+      // 累積 CAT 值
       for (const { idx, name } of catCols) {
+        if (!stationData[station][name]) {
+          stationData[station][name] = [];
+        }
         const raw = row[idx];
-        const v   = (raw == null || raw === '') ? 0 : parseFloat(raw);
-        catValues[name].push(isNaN(v) ? 0 : v);
+        const v = (raw == null || raw === '') ? 0 : parseFloat(raw);
+        stationData[station][name].push(isNaN(v) ? 0 : v);
       }
     }
 
-    // 計算每個 CAT 的統計值（PPM = value × 10000）
-    const cat_stats = {};
-    for (const { name } of catCols) {
-      const vals = catValues[name];
-      if (!vals.length) {
-        cat_stats[name] = { avg_ppm: 0, max_ppm: 0, never_occurred: true };
-        continue;
+    // 計算每個站點的統計值
+    for (const [station, catValues] of Object.entries(stationData)) {
+      const cat_stats = {};
+      for (const [catName, vals] of Object.entries(catValues)) {
+        if (!vals.length) {
+          cat_stats[catName] = { avg_ppm: 0, max_ppm: 0, never_occurred: true };
+          continue;
+        }
+        const ppms = vals.map(v => v * 10000);
+        cat_stats[catName] = {
+          avg_ppm: ppms.reduce((a, b) => a + b, 0) / ppms.length,
+          max_ppm: Math.max(...ppms),
+          never_occurred: ppms.every(v => v === 0)
+        };
       }
-      const ppms = vals.map(v => v * 10000);
-      cat_stats[name] = {
-        avg_ppm:       ppms.reduce((a, b) => a + b, 0) / ppms.length,
-        max_ppm:       Math.max(...ppms),
-        never_occurred: ppms.every(v => v === 0)
-      };
+      stations[station] = { cat_stats };
     }
+  } else {
+    // 舊格式：多個工作表，每個 Sheet = 一個站點
+    for (const sheetName of wb.SheetNames) {
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+      if (rows.length < 2) continue;
 
-    stations[sheetName] = { cat_stats };
+      const header = rows[0].map(h => (h != null ? String(h).trim() : ''));
+      const lotNoIdx = header.indexOf('Lot No');
+      if (lotNoIdx === -1) continue;
+
+      const productIdx = header.indexOf('Product');
+
+      // 識別 Fail CAT 欄位（排除固定欄位和 PASS cats）
+      const catCols = [];
+      for (let i = 0; i < header.length; i++) {
+        const n = header[i];
+        if (!n) continue;
+        if (SKIP_COLS.includes(n)) continue;
+        if (PASS_CATS.includes(n)) continue;
+        catCols.push({ idx: i, name: n });
+      }
+
+      const catValues = {};
+      catCols.forEach(({ name }) => {
+        catValues[name] = [];
+      });
+
+      // 逐列解析（跳過 Lot No 為空的列：平均/摘要列）
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row) continue;
+        const lotVal = row[lotNoIdx];
+        if (lotVal == null || String(lotVal).trim() === '') continue;
+
+        // 嘗試取得 product 名稱（取第一筆非空值）
+        if (product === 'UNKNOWN' && productIdx !== -1 && row[productIdx] != null) {
+          product = String(row[productIdx]).trim();
+        }
+
+        for (const { idx, name } of catCols) {
+          const raw = row[idx];
+          const v = (raw == null || raw === '') ? 0 : parseFloat(raw);
+          catValues[name].push(isNaN(v) ? 0 : v);
+        }
+      }
+
+      // 計算每個 CAT 的統計值（PPM = value × 10000）
+      const cat_stats = {};
+      for (const { name } of catCols) {
+        const vals = catValues[name];
+        if (!vals.length) {
+          cat_stats[name] = { avg_ppm: 0, max_ppm: 0, never_occurred: true };
+          continue;
+        }
+        const ppms = vals.map(v => v * 10000);
+        cat_stats[name] = {
+          avg_ppm: ppms.reduce((a, b) => a + b, 0) / ppms.length,
+          max_ppm: Math.max(...ppms),
+          never_occurred: ppms.every(v => v === 0)
+        };
+      }
+
+      stations[sheetName] = { cat_stats };
+    }
   }
 
   return { stations, product };
+}
+
+/**
+ * 檢測是否為新格式 CP Summary
+ * 新格式特徵：
+ *   1. 只有一個工作表
+ *   2. 工作表中有 Process 欄（用來識別站點）
+ *   3. 有 Wf. Yld. 欄（良率欄）
+ */
+function _detectNewCPFormat(wb) {
+  if (wb.SheetNames.length !== 1) {
+    return false; // 多個工作表 = 舊格式
+  }
+
+  const sheetName = wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+  if (rows.length < 1) return false;
+
+  const header = rows[0].map(h => (h != null ? String(h).trim() : ''));
+  const hasProcess = header.includes('Process');
+  const hasWfYld = header.includes('Wf. Yld.');
+
+  return hasProcess && hasWfYld;
 }
 
 // ──────────────────────────────────────────────────────────────
