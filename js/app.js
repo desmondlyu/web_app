@@ -46,21 +46,8 @@ const _state = {
 // ──────────────────────────────────────────────────────────────
 
 /**
- * 產品別白名單
- * 允許的產品別前綴：FAG*, EAG*, MAG*, AAG*, FCG*, FBG*
- */
-const VALID_PRODUCTS = /^(FAG|EAG|MAG|AAG|FCG|FBG)[A-Z0-9]*$/i;
-
-/**
- * 站點白名單
- */
-const VALID_STATIONS = new Set([
-  'DS00', 'S1P1', 'DS03', 'DS05', 'SFIN', 'SPRE', 'DS07', 'DS08', 'DS09', 'DS04'
-]);
-
-/**
  * 檔案驗證規則定義
- * 格式：產品別_站點_DATALOG_*.TXT (Rawdata)
+ * 格式：產品別_站點*.txt (Rawdata - 寬鬆格式)
  *       產品別_CP_Summary.xlsx (CP Summary)
  *       產品別_CP_MSS.xlsx (MSS)
  */
@@ -76,11 +63,11 @@ const FILE_VALIDATION_RULES = {
     desc: 'MSS Excel'
   },
   raw: {
-    pattern: /^([A-Za-z0-9]+)_([A-Za-z0-9]+)_DATALOG_.*\.txt$/i,
-    hint: '產品別_站點_DATALOG_*.TXT',
-    desc: 'Rawdata TXT',
-    productPattern: VALID_PRODUCTS,
-    stationList: VALID_STATIONS
+    // 新格式：產品別_站點*.txt (任何 txt 都接受)
+    // 示例可接受：EAG119_SFIN.txt, EAG119_SFIN_DATALOG_X37Y16_DBIN1.txt
+    pattern: /^(FAG|EAG|MAG|AAG|FCG|FBG)([A-Z0-9]*)_(DS00|S1P1|DS03|DS05|SFIN|SPRE|DS07|DS08|DS09|DS04).*\.txt$/i,
+    hint: '產品別_站點*.txt (例：EAG119_SFIN.txt 或 EAG119_SFIN_DATALOG_X37Y16_DBIN1.txt)',
+    desc: 'Rawdata TXT'
   }
 };
 
@@ -105,25 +92,11 @@ function validateFileName(filename, type) {
   if (type === 'cp' || type === 'mss') {
     return { valid: true, product: match[1] };
   } else if (type === 'raw') {
-    const product = match[1];
-    const station = match[2];
-
-    // 驗證產品別是否在白名單中
-    if (!rule.productPattern.test(product)) {
-      return {
-        valid: false,
-        error: `產品別 "${product}" 不符合規則。允許的產品別：FAG*, EAG*, MAG*, AAG*, FCG*, FBG*`
-      };
-    }
-
-    // 驗證站點是否在白名單中
-    if (!rule.stationList.has(station.toUpperCase())) {
-      const validStations = Array.from(rule.stationList).join(', ');
-      return {
-        valid: false,
-        error: `站點 "${station}" 不符合規則。允許的站點：${validStations}`
-      };
-    }
+    // 新格式的捕獲組：(產品別前綴)(產品別後綴)_(站點).*\.txt
+    const productPrefix = match[1];  // FAG|EAG|...
+    const productSuffix = match[2];  // 數字/字母
+    const station = match[3];        // DS00|S1P1|...
+    const product = productPrefix + productSuffix;
 
     return { valid: true, product, station };
   }
