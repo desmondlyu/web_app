@@ -126,6 +126,7 @@ body {
 .upload-zone--blue  { border-color: #93C5FD; }
 .upload-zone--green { border-color: #86EFAC; }
 .upload-zone--amber { border-color: #FCD34D; }
+.upload-zone--violet { border-color: #D8B4FE; }
 
 .upload-zone:hover,
 .upload-zone.dragover {
@@ -140,6 +141,8 @@ body {
 :root[data-theme="light"] .upload-zone--green.dragover { background: #F0FDF4; border-color: #22C55E; }
 :root[data-theme="light"] .upload-zone--amber:hover,
 :root[data-theme="light"] .upload-zone--amber.dragover { background: #FFFBEB; border-color: #F59E0B; }
+:root[data-theme="light"] .upload-zone--violet:hover,
+:root[data-theme="light"] .upload-zone--violet.dragover { background: #F3E8FF; border-color: #A855F7; }
 
 :root[data-theme="dark"] .upload-zone--blue:hover,
 :root[data-theme="dark"] .upload-zone--blue.dragover  { background: #172449; border-color: #3B82F6; }
@@ -147,14 +150,18 @@ body {
 :root[data-theme="dark"] .upload-zone--green.dragover { background: #14291E; border-color: #22C55E; }
 :root[data-theme="dark"] .upload-zone--amber:hover,
 :root[data-theme="dark"] .upload-zone--amber.dragover { background: #2A2005; border-color: #F59E0B; }
+:root[data-theme="dark"] .upload-zone--violet:hover,
+:root[data-theme="dark"] .upload-zone--violet.dragover { background: #2D1B4E; border-color: #A855F7; }
 
 :root[data-theme="light"] .upload-zone.has-file--blue  { border-style: solid; border-color: #2563EB; background: #EFF6FF; }
 :root[data-theme="light"] .upload-zone.has-file--green { border-style: solid; border-color: #16A34A; background: #F0FDF4; }
 :root[data-theme="light"] .upload-zone.has-file--amber { border-style: solid; border-color: #D97706; background: #FFFBEB; }
+:root[data-theme="light"] .upload-zone.has-file--violet { border-style: solid; border-color: #7C3AED; background: #F3E8FF; }
 
 :root[data-theme="dark"] .upload-zone.has-file--blue  { border-style: solid; border-color: #3B82F6; background: #172449; }
 :root[data-theme="dark"] .upload-zone.has-file--green { border-style: solid; border-color: #22C55E; background: #14291E; }
 :root[data-theme="dark"] .upload-zone.has-file--amber { border-style: solid; border-color: #F59E0B; background: #2A2005; }
+:root[data-theme="dark"] .upload-zone.has-file--violet { border-style: solid; border-color: #A855F7; background: #2D1B4E; }
 
 .upload-zone__label {
   display: flex;

@@ -36,6 +36,7 @@ const _state = {
   cpFile:   null,   // CP Summary File
   mssFile:  null,   // MSS File
   rawFiles: [],     // Rawdata TXT Files (可選)
+  ttlogFile: null,  // TTLOG File (可選)
   result:   null,   // crossAnalyze 輸出
   rawData:  null,   // parseRawdata 輸出
   product:  'UNKNOWN'
@@ -50,6 +51,7 @@ const _state = {
  * 格式：產品別_站點*.txt (Rawdata - 寬鬆格式)
  *       產品別_CP_Summary.xlsx (CP Summary)
  *       產品別_CP_MSS.xlsx (MSS)
+ *       產品別_Master_Summary.xlsx (TTLOG - 選填)
  */
 const FILE_VALIDATION_RULES = {
   cp: {
@@ -68,13 +70,18 @@ const FILE_VALIDATION_RULES = {
     pattern: /^(FAG|EAG|MAG|AAG|FCG|FBG)([A-Z0-9]*)_(DS00|S1P1|DS03|DS05|SFIN|SPRE|DS07|DS08|DS09|DS04).*\.txt$/i,
     hint: '產品別_站點*.txt (例：EAG119_SFIN.txt 或 EAG119_SFIN_DATALOG_X37Y16_DBIN1.txt)',
     desc: 'Rawdata TXT'
+  },
+  ttlog: {
+    pattern: /^([A-Za-z0-9]+)_Master_Summary\.xlsx$/i,
+    hint: '產品別_Master_Summary.xlsx',
+    desc: 'TTLOG Master Summary (選填)'
   }
 };
 
 /**
  * 驗證單個檔案名稱是否符合規則
  * @param {string} filename - 檔案名稱
- * @param {string} type - 檔案類型 ('cp', 'mss', 'raw')
+ * @param {string} type - 檔案類型 ('cp', 'mss', 'raw', 'ttlog')
  * @returns {Object} { valid: boolean, product?: string, station?: string, error?: string }
  */
 function validateFileName(filename, type) {
@@ -89,7 +96,7 @@ function validateFileName(filename, type) {
     };
   }
 
-  if (type === 'cp' || type === 'mss') {
+  if (type === 'cp' || type === 'mss' || type === 'ttlog') {
     return { valid: true, product: match[1] };
   } else if (type === 'raw') {
     // 新格式的捕獲組：(產品別前綴)(產品別後綴)_(站點).*\.txt
@@ -163,6 +170,13 @@ function onFileChange(type, files) {
     _setFileLabel('mss-filename', files[0].name, 'zone-mss', 'has-file--green', 'mss-action');
 
   } else if (type === 'raw') {
+    // 檢查是否已上傳 TTLOG，若是則顯示警告並清除
+    if (_state.ttlogFile) {
+      showToast('⚠️', '你只能用 RAWDATA 或是 TTLOG 進行分析', true);
+      _clearFileZone('zone-ttlog', 'ttlog-filename', 'ttlog-action', 'has-file--violet');
+      _state.ttlogFile = null;
+    }
+
     // 驗證每個 Rawdata 檔案名稱
     const validatedFiles = [];
     for (const file of files) {
@@ -196,6 +210,25 @@ function onFileChange(type, files) {
       ? validatedFiles[0].name
       : `✓ ${validatedFiles.length} 個 TXT 檔案`;
     _setFileLabel('raw-filenames', label, 'zone-raw', 'has-file--amber', 'raw-action');
+
+  } else if (type === 'ttlog') {
+    // 檢查是否已上傳 Rawdata，若是則顯示警告並清除
+    if (_state.rawFiles.length > 0) {
+      showToast('⚠️', '你只能用 RAWDATA 或是 TTLOG 進行分析', true);
+      _clearFileZone('zone-raw', 'raw-filenames', 'raw-action', 'has-file--amber');
+      _state.rawFiles = [];
+    }
+
+    const validation = validateFileName(files[0].name, 'ttlog');
+    if (!validation.valid) {
+      showToast('⚠️', validation.error, true);
+      _clearFileZone('zone-ttlog', 'ttlog-filename', 'ttlog-action', 'has-file--violet');
+      _state.ttlogFile = null;
+      _updateAnalyzeBtn();
+      return;
+    }
+    _state.ttlogFile = files[0];
+    _setFileLabel('ttlog-filename', files[0].name, 'zone-ttlog', 'has-file--violet', 'ttlog-action');
   }
 
   _updateAnalyzeBtn();
@@ -234,7 +267,7 @@ function onDragLeave(e, zoneId) {
 
 function onDrop(e, type) {
   e.preventDefault();
-  const zoneMap = { cp: 'zone-cp', mss: 'zone-mss', raw: 'zone-raw' };
+  const zoneMap = { cp: 'zone-cp', mss: 'zone-mss', raw: 'zone-raw', ttlog: 'zone-ttlog' };
   document.getElementById(zoneMap[type])?.classList.remove('dragover');
 
   // 驗證拖入的檔案類型 + 名稱格式
@@ -258,7 +291,7 @@ function onDrop(e, type) {
 
 function _updateAnalyzeBtn() {
   const btn = document.getElementById('btn-analyze');
-  if (btn) btn.disabled = !(_state.cpFile && _state.mssFile);
+  if (btn) btn.disabled = !(_state.cpFile && _state.mssFile && (_state.rawFiles.length > 0 || _state.ttlogFile));
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -278,11 +311,17 @@ async function startAnalysis() {
     _setProgress(28, '解析 MSS...');
     const mssData = await parseMSS(_state.mssFile);
 
-    // 3. 解析 Rawdata（選填）
+    // 3. 解析 Rawdata 或 TTLOG（二選一）
     let rawData = null;
+    let ttlogData = null;
     if (_state.rawFiles.length > 0) {
       _setProgress(48, `解析 Rawdata（${_state.rawFiles.length} 個檔案）...`);
       rawData = await parseRawdata(_state.rawFiles);
+    } else if (_state.ttlogFile) {
+      _setProgress(48, '解析 TTLOG...');
+      ttlogData = await parseTTLOG(_state.ttlogFile);
+      // 轉換 TTLOG 格式為相容於 rawData 的結構
+      rawData = ttlogData;
     }
 
     // 4. 交叉分析

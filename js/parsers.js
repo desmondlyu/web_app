@@ -415,3 +415,158 @@ async function parseRawdata(files) {
 
   return { stations, product };
 }
+
+// ──────────────────────────────────────────────────────────────
+// 解析 TTLOG Master_Summary Excel
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * 解析 TTLOG (Master_Summary 分頁) Excel 檔案
+ * @param {File} file
+ * @returns {Promise<{stations: Object, product: string}>}
+ *   stations[stationName].items[key] = { test_no, item_name, time_sec, pass_count, fail_count, exec_count, avg_time_sec }
+ */
+async function parseTTLOG(file) {
+  const ab = await file.arrayBuffer();
+  const wb = XLSX.read(ab, { type: 'array' });
+  
+  // 尋找 Master_Summary 工作表
+  let masterSheet = null;
+  let sheetName = null;
+  
+  for (const name of wb.SheetNames) {
+    if (name.toLowerCase().includes('master') || name.toLowerCase().includes('summary')) {
+      sheetName = name;
+      masterSheet = wb.Sheets[name];
+      break;
+    }
+  }
+  
+  if (!masterSheet) {
+    console.warn('[TTLOG Parser] 找不到 Master_Summary 工作表');
+    return { stations: {}, product: 'UNKNOWN' };
+  }
+  
+  const rows = XLSX.utils.sheet_to_json(masterSheet, { header: 1, defval: null });
+  if (rows.length < 2) return { stations: {}, product: 'UNKNOWN' };
+  
+  const header = rows[0].map(h => (h != null ? String(h).trim() : ''));
+  const stations = {};
+  let product = 'UNKNOWN';
+  
+  // 識別欄位索引
+  const testItemIdx = header.findIndex(h => h.toLowerCase().includes('test_item'));
+  const grandTotalTimeIdx = header.findIndex(h => h.toUpperCase().includes('GRAND') && h.toUpperCase().includes('TOTAL') && h.toUpperCase().includes('TIME'));
+  
+  if (testItemIdx === -1) {
+    console.warn('[TTLOG Parser] 找不到 Test_Item 欄位');
+    return { stations: {}, product: 'UNKNOWN' };
+  }
+  
+  if (grandTotalTimeIdx === -1) {
+    console.warn('[TTLOG Parser] 找不到 Grand_Total_Time 欄位');
+    return { stations: {}, product: 'UNKNOWN' };
+  }
+  
+  // 識別所有站點欄位（格式：StationName_Count, StationName_Time）
+  const stationPatterns = ['DS00', 'S1P1', 'DS03', 'DS05', 'SFIN', 'SPRE', 'DS07', 'DS08', 'DS09', 'DS04'];
+  const stationCols = {}; // station -> { countIdx, timeIdx }
+  
+  for (const station of stationPatterns) {
+    const countIdx = header.findIndex(h => h.toUpperCase().includes(station) && h.toUpperCase().includes('COUNT'));
+    const timeIdx = header.findIndex(h => h.toUpperCase().includes(station) && h.toUpperCase().includes('TIME'));
+    if (countIdx !== -1 || timeIdx !== -1) {
+      stationCols[station] = { countIdx, timeIdx };
+    }
+  }
+  
+  if (Object.keys(stationCols).length === 0) {
+    console.warn('[TTLOG Parser] 找不到任何站點欄位（Station_Count, Station_Time）');
+    return { stations: {}, product: 'UNKNOWN' };
+  }
+  
+  // 解析資料列
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row || !row[testItemIdx]) continue;
+    
+    let testItemName = String(row[testItemIdx]).trim();
+    if (!testItemName) continue;
+    
+    // 移除末尾的 _(M)
+    testItemName = testItemName.replace(/_\(M\)$/, '').trim();
+    
+    // 驗證 Grand_Total_Time
+    let grandTotalTime = 0;
+    if (grandTotalTimeIdx !== -1 && row[grandTotalTimeIdx] != null) {
+      grandTotalTime = parseFloat(row[grandTotalTimeIdx]) || 0;
+    }
+    
+    // Grand_Total_Time 必須大於 0 才視為有效資料列
+    if (grandTotalTime <= 0) continue;
+    
+    // TTLOG 資料結構說明
+    // ── 在 crossAnalyze() 中，鍵值匹配會嘗試多種組合，包括 test_item 名稱單獨查詢
+    // ── 故此處使用多鍵策略：既儲存 row_index_test_item 組合，也儲存 test_item 單獨鍵值
+    const testNo = r; // 行號（作為備用識別，但不用作主要匹配鍵值）
+    
+    // 迴圈處理每個站點，提取各站點的時間
+    for (const [station, colIndices] of Object.entries(stationCols)) {
+      const { countIdx, timeIdx } = colIndices;
+      
+      let execCount = 0;
+      let timeSec = 0;
+      
+      if (countIdx !== -1 && row[countIdx] != null) {
+        execCount = parseInt(row[countIdx]) || 0;
+      }
+      if (timeIdx !== -1 && row[timeIdx] != null) {
+        timeSec = parseFloat(row[timeIdx]) || 0;
+      }
+      
+      // 只要有時間數據或執行次數就記錄此 item
+      if (execCount > 0 || timeSec > 0) {
+        if (!stations[station]) {
+          stations[station] = { items: {}, wafer_count: 1 };
+        }
+        
+        // 多鍵策略：既用 testNo_testItemName，也用 testItemName 單獨鍵值
+        // 這樣 crossAnalyze() 中多種鍵值查詢都能找到數據
+        const primaryKey = `${testNo}_${testItemName}`;
+        const secondaryKey = testItemName;
+        
+        const itemData = {
+          test_no: testNo,
+          item_name: testItemName,
+          time_sec: timeSec,
+          pass_count: 0,
+          fail_count: 0,
+          exec_count: execCount,
+          avg_time_sec: execCount > 0 ? timeSec / execCount : 0,
+          grand_total_time: grandTotalTime
+        };
+        
+        // 先更新或建立主鍵值
+        if (!stations[station].items[primaryKey]) {
+          stations[station].items[primaryKey] = { ...itemData };
+        } else {
+          // 若多次出現，進行加總
+          const item = stations[station].items[primaryKey];
+          item.time_sec += timeSec;
+          item.exec_count += execCount;
+          item.avg_time_sec = item.exec_count > 0 ? item.time_sec / item.exec_count : 0;
+        }
+        
+        // 再更新或建立副鍵值（指向主鍵值的資料，保持同步）
+        stations[station].items[secondaryKey] = stations[station].items[primaryKey];
+      }
+    }
+  }
+  
+  // 從檔名取得 product
+  const base = file.name.replace(/\.[^.]+$/, '');
+  const parts = base.split('_');
+  if (parts[0]) product = parts[0];
+  
+  return { stations, product, source: 'TTLOG' };
+}

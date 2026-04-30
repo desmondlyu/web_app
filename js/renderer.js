@@ -76,21 +76,62 @@ function renderGlobalKPI(result, rawData) {
   let bestStation = '—', bestStationTime = 0, bestStationTimeStr = '—';
 
   if (rawData && rawData.stations) {
-    for (const [stName, stData] of Object.entries(rawData.stations)) {
-      let stTime = 0;
-      let stExec = 0;
-      const itemValues = Object.values(stData.items || {});
-      for (const item of itemValues) {
-        stTime += item.time_sec   || 0;
-        stExec += item.exec_count || 0;
+    // 檢查是否使用 TTLOG（由 source 標記指示）
+    const isFromTTLOG = rawData.source === 'TTLOG';
+    
+    if (isFromTTLOG) {
+      // ── TTLOG 邏輯：使用 Grand_Total_Time 計算總時間 ──
+      // 在 TTLOG 中，每個測試項目的 Grand_Total_Time 已經是該項目的總時間（跨所有站點）
+      // 所以我們應該只計算一次，而不是各站點相加
+      const processedItems = new Set(); // 防止重複計算同一測試項目
+      
+      for (const [stName, stData] of Object.entries(rawData.stations)) {
+        let stTime = 0;
+        let stExec = 0;
+        const itemValues = Object.values(stData.items || {});
+        
+        for (const item of itemValues) {
+          // 使用 Grand_Total_Time 作為該測試項目的總時間
+          const itemTime = item.grand_total_time || item.time_sec || 0;
+          const itemKey = `${item.test_no}_${item.item_name}`;
+          
+          // 只在第一次遇到該測試項目時計入總測試時間
+          if (!processedItems.has(itemKey)) {
+            totalTestTimeSec += itemTime;
+            processedItems.add(itemKey);
+          }
+          
+          // 站點時間仍然使用 time_sec（該站點的時間）
+          stTime += item.time_sec || 0;
+          stExec += item.exec_count || 0;
+        }
+        
+        totalExecCount   += stExec;
+        totalUniqueItems += itemValues.length;
+        if (stTime > bestStationTime) {
+          bestStationTime    = stTime;
+          bestStation        = stName;
+          bestStationTimeStr = _fmtTime(stTime);
+        }
       }
-      totalTestTimeSec += stTime;
-      totalExecCount   += stExec;
-      totalUniqueItems += itemValues.length;
-      if (stTime > bestStationTime) {
-        bestStationTime    = stTime;
-        bestStation        = stName;
-        bestStationTimeStr = _fmtTime(stTime);
+    } else {
+      // ── Rawdata 邏輯：各站點 time_sec 加總 ──
+      for (const [stName, stData] of Object.entries(rawData.stations)) {
+        let stTime = 0;
+        let stExec = 0;
+        const itemValues = Object.values(stData.items || {});
+        for (const item of itemValues) {
+          stTime += item.time_sec   || 0;
+          stExec += item.exec_count || 0;
+        }
+        totalTestTimeSec += stTime;
+        totalExecCount   += stExec;
+        totalUniqueItems += itemValues.length;
+        if (stTime > bestStationTime) {
+          bestStationTime    = stTime;
+          bestStation        = stName;
+          bestStationTimeStr = _fmtTime(stTime);
+        }
       }
     }
   }
@@ -202,7 +243,7 @@ function renderTop10(result, rawData) {
     container.innerHTML = `
       <div class="data-table-wrapper" style="margin-bottom:0">
         <div class="data-table-header" style="background:linear-gradient(135deg,#c2410c 0%,#f97316 100%)">
-          <h4>⏱ Top 10 最耗時 Test Items（跨站點，依 Rawdata 實際總執行時間排序）</h4>
+          <h4>⏱ Top 10 最耗時 Test Items（跨站點，依實際總執行時間排序）</h4>
         </div>
         <div class="virtual-scroll-outer">
           <table class="data-table">
@@ -310,7 +351,7 @@ function switchStation(stationName, result, rawData) {
   if (_charts[chartKey]) { _charts[chartKey].destroy(); delete _charts[chartKey]; }
 
   const content = document.getElementById('station-content');
-  content.innerHTML = _buildStationHTML(stationName, stData);
+  content.innerHTML = _buildStationHTML(stationName, stData, rawData);
 
   // 建立環形圖
   const canvasEl = document.getElementById(`chart-${chartKey}`);
@@ -331,18 +372,77 @@ function switchStation(stationName, result, rawData) {
 // 站點 HTML 骨架
 // ──────────────────────────────────────────────────────────────
 
-function _buildStationHTML(name, stData) {
+function _buildStationHTML(name, stData, rawData) {
   const s  = stData.summary;
   const eid = _eid(name);
-  const timeStr = s.total_removable_time_sec >= 60
-    ? `${(s.total_removable_time_sec / 60).toFixed(2)} min`
-    : `${s.total_removable_time_sec.toFixed(3)} s`;
+
+  // ── 時間格式輔助 ──
+  function _fmtTime(sec) {
+    if (sec <= 0) return '—';
+    if (sec < 60)  return `${sec.toFixed(1)} s`;
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.round(sec % 60);
+    if (h > 0)  return `${h}h ${m}m ${s}s`;
+    return `${m}m ${s}s`;
+  }
+
+  // ── 計算當站測試時間 ──
+  let stationTestTime = 0;
+  if (rawData && rawData.stations && rawData.stations[name]) {
+    const stRawData = rawData.stations[name];
+    // 防止重複計算：使用 Set 去重（primaryKey 和 secondaryKey 指向同一物件）
+    const processedObjects = new Set();
+    for (const item of Object.values(stRawData.items || {})) {
+      // 使用物件引用作為唯一識別，避免同一物件被計算多次
+      if (!processedObjects.has(item)) {
+        stationTestTime += item.time_sec || 0;
+        processedObjects.add(item);
+      }
+    }
+    console.log(`[DEBUG] 站點 ${name} 當站測試時間: ${stationTestTime} 秒, 唯一項目數: ${processedObjects.size}`);
+  }
+  const stationTimeStr = _fmtTime(stationTestTime);
+
+  // ── 計算該站點的「可節省時間」(僅計算該站點可移除項目) ──
+  let savableTimeThisStation = 0;
+  if (rawData && rawData.stations && rawData.stations[name]) {
+    const stRawData = rawData.stations[name];
+    const processedObjects = new Set();
+    
+    // 僅遍歷該站點的「可移除項目」
+    for (const removableItem of (stData.removable || [])) {
+      // 在 rawdata 中查找對應的時間
+      const cleanedItem = removableItem.test_item.replace(/^[-\s]+/, '').trim();
+      const keysToTry = [
+        `${removableItem.test_no}_${removableItem.test_item}`,
+        `${removableItem.test_no}_${cleanedItem}`,
+        cleanedItem,
+        removableItem.test_item
+      ];
+      
+      let hit = null;
+      for (const key of keysToTry) {
+        if (stRawData.items && stRawData.items[key]) {
+          hit = stRawData.items[key];
+          break;
+        }
+      }
+      
+      if (hit && !processedObjects.has(hit)) {
+        savableTimeThisStation += hit.time_sec || 0;
+        processedObjects.add(hit);
+      }
+    }
+    console.log(`[DEBUG] 站點 ${name} 可節省時間: ${savableTimeThisStation} 秒, 可移除項目: ${stData.removable.length}`);
+  }
+  const savableTimeStr = _fmtTime(savableTimeThisStation);
 
   const miniKpis = [
     { label: '總項目',     value: s.total_items,          bg: '#F3F4F6', text: '#374151' },
     { label: '可移除',     value: s.removable_count,       bg: '#DCFCE7', text: '#16A34A' },
     { label: '低風險',     value: s.very_low_risk_count,   bg: '#DBEAFE', text: '#2563EB' },
-    { label: 'Repair',     value: s.repair_item_count,     bg: '#F3E8FF', text: '#9333EA' },
+    { label: '當站測試時間', value: stationTimeStr,        bg: '#DBEAFE', text: '#2563EB' },
     { label: 'Yield Loss', value: s.has_loss_count,        bg: '#FEE2E2', text: '#DC2626' }
   ];
 
@@ -385,7 +485,7 @@ function _buildStationHTML(name, stData) {
               </tr>`).join('')}
             <tr style="border-top:1px solid #E5E7EB">
               <td class="pt-2 pr-4 text-xs text-gray-500">可節省時間</td>
-              <td class="pt-2 text-right font-bold text-blue-600">${timeStr}</td>
+              <td class="pt-2 text-right font-bold text-blue-600">${savableTimeStr}</td>
             </tr>
           </tbody>
         </table>

@@ -56,7 +56,7 @@
 
       <!-- 步驟一：上傳 -->
       <p class="step-label">步驟一：上傳分析檔案</p>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
 
         <!-- CP Summary -->
         <div class="upload-zone upload-zone--blue" id="zone-cp"
@@ -119,6 +119,26 @@
           </label>
         </div>
 
+        <!-- TTLOG -->
+        <div class="upload-zone upload-zone--violet" id="zone-ttlog"
+             ondragover="APP.onDragOver(event,'zone-ttlog')"
+             ondragleave="APP.onDragLeave(event,'zone-ttlog')"
+             ondrop="APP.onDrop(event,'ttlog')">
+          <input type="file" id="input-ttlog" accept=".xlsx,.xls" class="hidden"
+                 onchange="APP.onFileChange('ttlog',this.files)">
+          <label for="input-ttlog" class="upload-zone__label">
+            <svg class="upload-zone__icon text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <path d="M8 13h8M8 17h5"/>
+            </svg>
+            <span class="upload-zone__title">TTLOG</span>
+            <span class="upload-zone__hint">產品別_Master_Summary.xlsx (選填，單一檔案)</span>
+            <span id="ttlog-filename" class="upload-zone__filename hidden"></span>
+            <span class="upload-zone__action" id="ttlog-action">拖曳或點擊上傳</span>
+          </label>
+        </div>
+
       </div>
 
       <!-- 步驟二：閾值 -->
@@ -148,7 +168,7 @@
                 onclick="APP.startAnalysis()">
           ▶ 開始分析
         </button>
-        <p class="text-xs mt-3" style="color:var(--text-muted)">需上傳 CP Summary + MSS 才能開始分析</p>
+        <p class="text-xs mt-3" style="color:var(--text-muted)">需上傳 CP Summary + MSS + (Rawdata 或 TTLOG) 才能開始分析</p>
         <p class="text-xs mt-3" style="color:var(--text-muted)">作者: PP32 YPLu (Desmond)</p>
       </div>
 

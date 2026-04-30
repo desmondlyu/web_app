@@ -89,14 +89,44 @@ function crossAnalyze(cpData, mssData, rawData, thresholds, product) {
       const { test_no, test_item, cat_ids, is_repair } = item;
       const cls = classify(cat_ids, catStats, is_repair, tv, tl);
 
-      // 從 rawdata 查詢此 test item 的平均執行時間
+      // 從 rawdata 查詢此 test item 的總執行時間（可節省時間）
       // MSS 的 test_item 可能有 "- " 前綴（例 "- Opens_PPS"），rawdata 無此前綴
+      // TTLOG 的鍵值可能不包含 test_no，故需要嘗試多種匹配方式
       let saved_time_sec = 0;
       if (rawStation) {
-        const key1 = `${test_no}_${test_item}`;
-        const key2 = `${test_no}_${test_item.replace(/^[-\s]+/, '')}`; // 去除前綴 "- "
-        const hit  = rawStation.items[key1] || rawStation.items[key2];
-        if (hit) saved_time_sec = hit.avg_time_sec || 0;
+        // 移除 test_item 前綴（"- " 或其他）
+        const cleanedItem = test_item.replace(/^[-\s]+/, '').trim();
+        
+        // 嘗試多種鍵值組合（優先順序）
+        const keysToTry = [
+          `${test_no}_${test_item}`,           // 原始組合（含前綴）
+          `${test_no}_${cleanedItem}`,         // 移除前綴
+          `${cleanedItem}`,                     // 只用 test_item（TTLOG 可能沒有 test_no）
+          test_item,                            // 原始 test_item
+        ];
+        
+        let hit = null;
+        for (const key of keysToTry) {
+          if (rawStation.items[key]) {
+            hit = rawStation.items[key];
+            break;
+          }
+        }
+        
+        // 優先使用 time_sec（總時間，適用於 TTLOG），否則用 avg_time_sec（Rawdata 平均時間）
+        if (hit) {
+          saved_time_sec = hit.time_sec || hit.avg_time_sec || 0;
+        }
+        
+        // 調試輸出（用於驗證匹配情況）
+        if (!hit && Object.keys(rawStation.items).length > 0) {
+          const firstItemKey = Object.keys(rawStation.items)[0];
+          console.warn(
+            `[DEBUG] 無法匹配 test_no=${test_no}, test_item="${test_item}" 到 TTLOG 資料。` +
+            `嘗試過的鍵值：${keysToTry.join(', ')}。` +
+            `rawStation 中的第一個鍵值示例：${firstItemKey}`
+          );
+        }
       }
 
       const out = {
