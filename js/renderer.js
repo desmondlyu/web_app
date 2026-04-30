@@ -351,7 +351,7 @@ function switchStation(stationName, result, rawData) {
   if (_charts[chartKey]) { _charts[chartKey].destroy(); delete _charts[chartKey]; }
 
   const content = document.getElementById('station-content');
-  content.innerHTML = _buildStationHTML(stationName, stData, rawData);
+  content.innerHTML = _buildStationHTML(stationName, stData, result, rawData);
 
   // 建立環形圖
   const canvasEl = document.getElementById(`chart-${chartKey}`);
@@ -363,16 +363,13 @@ function switchStation(stationName, result, rawData) {
   _buildTable(`tbl-rm-${chartKey}`,  stData.removable,     _colsRemovable());
   _buildTable(`tbl-rp-${chartKey}`,  stData.repair_items,  _colsRepair());
   _buildTable(`tbl-nr-${chartKey}`,  stData.not_removable, _colsNotRemovable());
-
-  // Top 10 最耗時（跨站點）——放在可移除項目上方
-  renderTop10(result, rawData);
 }
 
 // ──────────────────────────────────────────────────────────────
 // 站點 HTML 骨架
 // ──────────────────────────────────────────────────────────────
 
-function _buildStationHTML(name, stData, rawData) {
+function _buildStationHTML(name, stData, result, rawData) {
   const s  = stData.summary;
   const eid = _eid(name);
 
@@ -438,6 +435,76 @@ function _buildStationHTML(name, stData, rawData) {
   }
   const savableTimeStr = _fmtTime(savableTimeThisStation);
 
+  // ── 站點級別 TOP 10 最耗時測試項目 ──
+  let top10HTML = '';
+  if (rawData && rawData.stations && rawData.stations[name]) {
+    const stRawData = rawData.stations[name];
+    const rows = [];
+    let stationTotalTime = 0;
+
+    for (const item of Object.values(stRawData.items || {})) {
+      if (item.time_sec > 0) {
+        rows.push({
+          item_name:  item.item_name,
+          exec_count: item.exec_count || 0,
+          time_sec:   item.time_sec
+        });
+        stationTotalTime += item.time_sec;
+      }
+    }
+
+    if (rows.length > 0) {
+      rows.sort((a, b) => b.time_sec - a.time_sec);
+      const top10 = rows.slice(0, 10);
+      const maxTime = top10[0].time_sec;
+
+      const rankCls = i => ['top10-rank-1','top10-rank-2','top10-rank-3'][i] || 'top10-rank-other';
+      const timeFmt = t => t >= 60 ? (t / 60).toFixed(2) + ' min' : t.toFixed(1) + ' s';
+
+      const bodyHTML = top10.map((r, i) => {
+        const barW = (r.time_sec / maxTime * 100).toFixed(1);
+        const pct = stationTotalTime > 0 ? (r.time_sec / stationTotalTime * 100).toFixed(1) : 0;
+        const cntCol = r.exec_count > 1
+          ? `<strong style="color:${r.exec_count > 10 ? '#f97316' : 'var(--text-primary)'}">${r.exec_count.toLocaleString()}</strong>`
+          : `${r.exec_count}`;
+        return `
+          <tr>
+            <td><span class="top10-rank ${rankCls(i)}">${i + 1}</span></td>
+            <td class="top10-item-name" title="${_esc(r.item_name)}">${_esc(r.item_name)}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums">${cntCol}</td>
+            <td>
+              <div class="top10-bar-row">
+                <div class="top10-bar-track">
+                  <div class="top10-bar-fill" style="width:${barW}%"></div>
+                </div>
+                <span class="top10-bar-val">${timeFmt(r.time_sec)}</span>
+              </div>
+            </td>
+            <td style="text-align:right;font-size:0.78rem;font-weight:700;color:#f97316">${pct}%</td>
+          </tr>`;
+      }).join('');
+
+      top10HTML = `
+        <div class="data-table-wrapper" style="margin-bottom:20px">
+          <div class="data-table-header" style="background:linear-gradient(135deg,#c2410c 0%,#f97316 100%)">
+            <h4>⏱ Top 10 最耗時 Test Items (${top10.length})</h4>
+          </div>
+          <div class="virtual-scroll-outer">
+            <table class="data-table">
+              <thead><tr>
+                <th style="width:44px">#</th>
+                <th>Test Item 名稱</th>
+                <th style="text-align:right;width:80px">執行次數</th>
+                <th>總時間 (S)</th>
+                <th style="text-align:right;width:64px">佔比</th>
+              </tr></thead>
+              <tbody>${bodyHTML}</tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+  }
+
   const miniKpis = [
     { label: '總項目',     value: s.total_items,          bg: '#F3F4F6', text: '#374151' },
     { label: '可移除',     value: s.removable_count,       bg: '#DCFCE7', text: '#16A34A' },
@@ -492,8 +559,8 @@ function _buildStationHTML(name, stData, rawData) {
       </div>
     </div>
 
-    <!-- 可移除項甲0表 -->
-    <div id="top10-station-section" style="margin-bottom:20px"></div>
+    <!-- 站點級別 TOP 10 -->
+    ${top10HTML}
 
     <!-- 可移除項目表 -->
     <div class="data-table-wrapper">
