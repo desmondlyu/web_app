@@ -441,15 +441,18 @@ function _buildStationHTML(name, stData, result, rawData) {
     const stRawData = rawData.stations[name];
     const rows = [];
     let stationTotalTime = 0;
+    const processedObjects = new Set();  // 防止重複計算同一物件
 
     for (const item of Object.values(stRawData.items || {})) {
-      if (item.time_sec > 0) {
+      // 使用物件引用作為唯一識別，避免多鍵導致同一物件被計算多次
+      if (!processedObjects.has(item) && item.time_sec > 0) {
         rows.push({
           item_name:  item.item_name,
           exec_count: item.exec_count || 0,
           time_sec:   item.time_sec
         });
         stationTotalTime += item.time_sec;
+        processedObjects.add(item);
       }
     }
 
