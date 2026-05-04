@@ -120,6 +120,10 @@ function renderGlobalKPI(result, rawData) {
     }
   }
 
+  const totalTimeStr   = rawData ? _fmtTime(totalTestTimeSec) : '— 請上傳 Rawdata —';
+  const repeatStr      = rawData ? (totalExecCount - totalUniqueItems).toLocaleString() : '—';
+  const subTestTime    = rawData ? bestStationTimeStr : '—';
+
   const cards = [
     {
       icon:    '🕐',
