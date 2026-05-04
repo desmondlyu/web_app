@@ -76,23 +76,40 @@ function renderGlobalKPI(result, rawData) {
   let bestStation = '—', bestStationTime = 0, bestStationTimeStr = '—';
 
   if (rawData && rawData.stations) {
-    // ── 統一邏輯：無論 TTLOG 或 Rawdata，都用相同方式計算 ──
+    // 檢查是否使用 TTLOG
+    const isFromTTLOG = rawData.source === 'TTLOG';
+    const processedItems = new Set(); // TTLOG 用：防止同一測試項目計算多次
+    
     for (const [stName, stData] of Object.entries(rawData.stations)) {
       let stTime = 0;
       let stExec = 0;
       const itemValues = Object.values(stData.items || {});
       
-      // 使用 Set 去重，防止同一物件被計算多次
+      // 計算最耗時站點：統一邏輯，都用去重的 stTime
       const processedObjects = new Set();
       for (const item of itemValues) {
         if (!processedObjects.has(item)) {
-          stTime += item.time_sec   || 0;
+          stTime += item.time_sec || 0;
           processedObjects.add(item);
         }
         stExec += item.exec_count || 0;
       }
       
-      totalTestTimeSec += stTime;
+      // 計算總測試時間：根據來源不同有不同邏輯
+      if (isFromTTLOG) {
+        // TTLOG：使用 Grand_Total_Time，每個項目只計算一次
+        for (const item of itemValues) {
+          const itemKey = `${item.test_no}_${item.item_name}`;
+          if (!processedItems.has(itemKey)) {
+            totalTestTimeSec += item.grand_total_time || item.time_sec || 0;
+            processedItems.add(itemKey);
+          }
+        }
+      } else {
+        // Rawdata：各站點 time_sec 加總（去重）
+        totalTestTimeSec += stTime;
+      }
+      
       totalExecCount   += stExec;
       totalUniqueItems += itemValues.length;
       if (stTime > bestStationTime) {
@@ -101,10 +118,7 @@ function renderGlobalKPI(result, rawData) {
         bestStationTimeStr = _fmtTime(stTime);
       }
     }
-
-  const totalTimeStr   = rawData ? _fmtTime(totalTestTimeSec) : '— 請上傳 Rawdata —';
-  const repeatStr      = rawData ? (totalExecCount - totalUniqueItems).toLocaleString() : '—';
-  const subTestTime    = rawData ? bestStationTimeStr : '—';
+  }
 
   const cards = [
     {
