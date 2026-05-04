@@ -121,7 +121,58 @@ function renderGlobalKPI(result, rawData) {
   }
 
   const totalTimeStr   = rawData ? _fmtTime(totalTestTimeSec) : '— 請上傳 Rawdata —';
-  const repeatStr      = rawData ? (totalExecCount - totalUniqueItems).toLocaleString() : '—';
+  
+  // 計算可節省時間百分比
+  // 分子：各站點可移除項目的 time_sec 加總（與站點卡片相同邏輯，從 Rawdata/TTLOG 查找）
+  // 分母：Rawdata/TTLOG 所有項目的 time_sec 加總（去重）
+  let savablePercentStr = '—';
+  if (result && result.stations && rawData && rawData.stations) {
+    let totalSavableTime = 0;
+
+    // 分子：逐站點查找可移除項目的 time_sec（與站點卡片完全相同的邏輯）
+    for (const [stName, stData] of Object.entries(result.stations)) {
+      const stRawData = rawData.stations[stName];
+      if (!stRawData) continue;
+      const processedObjects = new Set();
+      for (const removableItem of (stData.removable || [])) {
+        const cleanedItem = removableItem.test_item.replace(/^[-\s]+/, '').trim();
+        const keysToTry = [
+          `${removableItem.test_no}_${removableItem.test_item}`,
+          `${removableItem.test_no}_${cleanedItem}`,
+          cleanedItem,
+          removableItem.test_item
+        ];
+        let hit = null;
+        for (const key of keysToTry) {
+          if (stRawData.items && stRawData.items[key]) {
+            hit = stRawData.items[key];
+            break;
+          }
+        }
+        if (hit && !processedObjects.has(hit)) {
+          totalSavableTime += hit.time_sec || 0;
+          processedObjects.add(hit);
+        }
+      }
+    }
+
+    // 分母：Rawdata/TTLOG 所有項目 time_sec 加總（去重）
+    let stationTotalTime = 0;
+    for (const stData of Object.values(rawData.stations)) {
+      const processedObjects = new Set();
+      for (const item of Object.values(stData.items || {})) {
+        if (!processedObjects.has(item)) {
+          stationTotalTime += item.time_sec || 0;
+          processedObjects.add(item);
+        }
+      }
+    }
+
+    if (stationTotalTime > 0) {
+      savablePercentStr = ((totalSavableTime / stationTotalTime) * 100).toFixed(1) + '%';
+    }
+  }
+  
   const subTestTime    = rawData ? bestStationTimeStr : '—';
 
   const cards = [
@@ -134,9 +185,9 @@ function renderGlobalKPI(result, rawData) {
     },
     {
       icon:    '📊',
-      label:   '重複測試執行次數',
-      value:   repeatStr,
-      sub:     rawData ? '各站點重複執行次數合計' : '請上傳 Rawdata',
+      label:   '可節省時間百分比',
+      value:   savablePercentStr,
+      sub:     result ? '移除所有0 ppm測試項目' : '請上傳分析',
       color:   '#f87171'   // red-400
     },
     {
