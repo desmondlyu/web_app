@@ -75,32 +75,50 @@ function exportToExcel(result, rawData) {
   _appendSheet(wb, rpRows, 'CP_Repair保護');
 
   // ── 工作表 5：Top10_最耗時項目 ─────────────────────────────
-  const top10Rows = [['排名', '站點', 'Step', 'Test Item', '總時間(s)', '占比(%)']];
-  for (const [stName, st] of Object.entries(result.stations)) {
-    // 收集所有項目（可移除 + 不建議移除 + Repair保護）
-    const allItems = [...st.removable, ...st.not_removable, ...st.repair_items];
-    
-    // 按執行時間降序排列
-    const sorted = allItems
-      .sort((a, b) => (b.saved_time_sec || 0) - (a.saved_time_sec || 0))
-      .slice(0, 10); // 取前 10
-    
-    // 計算該站點的總時間用於百分比
-    const stationTotalTime = st.summary.total_time_sec || 1;
-    
-    sorted.forEach((item, idx) => {
-      const timeInSec = item.saved_time_sec || 0;
-      const percentage = (timeInSec / stationTotalTime * 100).toFixed(2);
-      top10Rows.push([
-        idx + 1,
-        stName,
-        item.test_no,
-        item.test_item,
-        Number(timeInSec.toFixed(4)),
-        Number(percentage)
-      ]);
-    });
+  // 使用 rawData（與 Web 儀表板同邏輯）
+  const top10Rows = [['排名', '站點', 'Test Item', '執行次數', '總時間(s)', '占比(%)']];
+  
+  if (rawData && rawData.stations && Object.keys(rawData.stations).length > 0) {
+    for (const [stName, stRawData] of Object.entries(rawData.stations)) {
+      const rows = [];
+      let stationTotalTime = 0;
+      const processedObjects = new Set(); // 防止重複計算同一物件
+      
+      // 收集該站點的所有項目
+      for (const item of Object.values(stRawData.items || {})) {
+        if (!processedObjects.has(item) && item.time_sec > 0) {
+          rows.push({
+            item_name:  item.item_name,
+            exec_count: item.exec_count || 0,
+            time_sec:   item.time_sec
+          });
+          stationTotalTime += item.time_sec;
+          processedObjects.add(item);
+        }
+      }
+      
+      // 按執行時間降序排列，取前 10
+      if (rows.length > 0) {
+        rows.sort((a, b) => b.time_sec - a.time_sec);
+        const top10 = rows.slice(0, 10);
+        
+        top10.forEach((item, idx) => {
+          const percentage = stationTotalTime > 0 
+            ? (item.time_sec / stationTotalTime * 100).toFixed(2) 
+            : '0.00';
+          top10Rows.push([
+            idx + 1,
+            stName,
+            item.item_name,
+            item.exec_count,
+            Number(item.time_sec.toFixed(4)),
+            Number(percentage)
+          ]);
+        });
+      }
+    }
   }
+  
   _appendSheet(wb, top10Rows, 'Top10_最耗時項目');
 
   XLSX.writeFile(wb, `TTO_Report_${product}_${dtStr}.xlsx`);
