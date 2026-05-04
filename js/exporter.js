@@ -74,23 +74,34 @@ function exportToExcel(result, rawData) {
   }
   _appendSheet(wb, rpRows, 'CP_Repair保護');
 
-  // ── 工作表 5：Rawdata_執行（若有） ────────────────────────
-  if (rawData && rawData.stations && Object.keys(rawData.stations).length > 0) {
-    const rawRows = [[
-      '站點', 'Step', 'Test Item', '總時間(s)', '平均時間(s)', 'Pass 數', 'Fail 數', '執行次數'
-    ]];
-    for (const [stName, st] of Object.entries(rawData.stations)) {
-      for (const item of Object.values(st.items)) {
-        rawRows.push([
-          stName, item.test_no, item.item_name,
-          Number(item.time_sec.toFixed(4)),
-          Number((item.avg_time_sec || 0).toFixed(4)),
-          item.pass_count, item.fail_count, item.exec_count
-        ]);
-      }
-    }
-    _appendSheet(wb, rawRows, 'Rawdata_執行');
+  // ── 工作表 5：Top10_最耗時項目 ─────────────────────────────
+  const top10Rows = [['排名', '站點', 'Step', 'Test Item', '總時間(s)', '占比(%)']];
+  for (const [stName, st] of Object.entries(result.stations)) {
+    // 收集所有項目（可移除 + 不建議移除 + Repair保護）
+    const allItems = [...st.removable, ...st.not_removable, ...st.repair_items];
+    
+    // 按執行時間降序排列
+    const sorted = allItems
+      .sort((a, b) => (b.saved_time_sec || 0) - (a.saved_time_sec || 0))
+      .slice(0, 10); // 取前 10
+    
+    // 計算該站點的總時間用於百分比
+    const stationTotalTime = st.summary.total_time_sec || 1;
+    
+    sorted.forEach((item, idx) => {
+      const timeInSec = item.saved_time_sec || 0;
+      const percentage = (timeInSec / stationTotalTime * 100).toFixed(2);
+      top10Rows.push([
+        idx + 1,
+        stName,
+        item.test_no,
+        item.test_item,
+        Number(timeInSec.toFixed(4)),
+        Number(percentage)
+      ]);
+    });
   }
+  _appendSheet(wb, top10Rows, 'Top10_最耗時項目');
 
   XLSX.writeFile(wb, `TTO_Report_${product}_${dtStr}.xlsx`);
 }
