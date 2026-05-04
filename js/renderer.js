@@ -76,65 +76,31 @@ function renderGlobalKPI(result, rawData) {
   let bestStation = '—', bestStationTime = 0, bestStationTimeStr = '—';
 
   if (rawData && rawData.stations) {
-    // 檢查是否使用 TTLOG（由 source 標記指示）
-    const isFromTTLOG = rawData.source === 'TTLOG';
-    
-    if (isFromTTLOG) {
-      // ── TTLOG 邏輯：使用 Grand_Total_Time 計算總時間 ──
-      // 在 TTLOG 中，每個測試項目的 Grand_Total_Time 已經是該項目的總時間（跨所有站點）
-      // 所以我們應該只計算一次，而不是各站點相加
-      const processedItems = new Set(); // 防止重複計算同一測試項目
+    // ── 統一邏輯：無論 TTLOG 或 Rawdata，都用相同方式計算 ──
+    for (const [stName, stData] of Object.entries(rawData.stations)) {
+      let stTime = 0;
+      let stExec = 0;
+      const itemValues = Object.values(stData.items || {});
       
-      for (const [stName, stData] of Object.entries(rawData.stations)) {
-        let stTime = 0;
-        let stExec = 0;
-        const itemValues = Object.values(stData.items || {});
-        
-        for (const item of itemValues) {
-          // 使用 Grand_Total_Time 作為該測試項目的總時間
-          const itemTime = item.grand_total_time || item.time_sec || 0;
-          const itemKey = `${item.test_no}_${item.item_name}`;
-          
-          // 只在第一次遇到該測試項目時計入總測試時間
-          if (!processedItems.has(itemKey)) {
-            totalTestTimeSec += itemTime;
-            processedItems.add(itemKey);
-          }
-          
-          // 站點時間仍然使用 time_sec（該站點的時間）
-          stTime += item.time_sec || 0;
-          stExec += item.exec_count || 0;
-        }
-        
-        totalExecCount   += stExec;
-        totalUniqueItems += itemValues.length;
-        if (stTime > bestStationTime) {
-          bestStationTime    = stTime;
-          bestStation        = stName;
-          bestStationTimeStr = _fmtTime(stTime);
-        }
-      }
-    } else {
-      // ── Rawdata 邏輯：各站點 time_sec 加總 ──
-      for (const [stName, stData] of Object.entries(rawData.stations)) {
-        let stTime = 0;
-        let stExec = 0;
-        const itemValues = Object.values(stData.items || {});
-        for (const item of itemValues) {
+      // 使用 Set 去重，防止同一物件被計算多次
+      const processedObjects = new Set();
+      for (const item of itemValues) {
+        if (!processedObjects.has(item)) {
           stTime += item.time_sec   || 0;
-          stExec += item.exec_count || 0;
+          processedObjects.add(item);
         }
-        totalTestTimeSec += stTime;
-        totalExecCount   += stExec;
-        totalUniqueItems += itemValues.length;
-        if (stTime > bestStationTime) {
-          bestStationTime    = stTime;
-          bestStation        = stName;
-          bestStationTimeStr = _fmtTime(stTime);
-        }
+        stExec += item.exec_count || 0;
+      }
+      
+      totalTestTimeSec += stTime;
+      totalExecCount   += stExec;
+      totalUniqueItems += itemValues.length;
+      if (stTime > bestStationTime) {
+        bestStationTime    = stTime;
+        bestStation        = stName;
+        bestStationTimeStr = _fmtTime(stTime);
       }
     }
-  }
 
   const totalTimeStr   = rawData ? _fmtTime(totalTestTimeSec) : '— 請上傳 Rawdata —';
   const repeatStr      = rawData ? (totalExecCount - totalUniqueItems).toLocaleString() : '—';
